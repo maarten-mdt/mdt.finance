@@ -1,0 +1,14 @@
+@import "tailwindcss";
+
+@theme {
+  --color-ink: #0f172a;
+  --color-paper: #f7f7f5;
+  --color-muted: #64748b;
+  --color-line: #e2e2dc;
+  --color-accent: #b8860b;
+  --color-danger: #b91c1c;
+  --color-ok: #15803d;
+}
+
+html { -webkit-text-size-adjust: 100%; }
+body { @apply bg-paper text-ink antialiased; }
