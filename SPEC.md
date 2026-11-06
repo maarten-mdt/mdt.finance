@@ -234,8 +234,10 @@ This system holds SINs, bank details and ownership records, so it is built to a 
 
 **Stack**
 
-- Next.js (TypeScript) on Vercel at mdt.finance
-- Supabase for the database, auth and file storage, hosted in the Canada region
+- Next.js (TypeScript) on Railway at mdt.finance (decided Nov 6, 2026: everything runs on Railway, no Vercel or Supabase)
+- Railway Postgres for the database, with Postgres row-level security
+- Auth built into the app: email login, mandatory TOTP MFA, passkeys for admins
+- Railway storage bucket (S3-compatible) for signed agreements, statements and packages
 - Adobe Sign API for signatures
 - Postmark or Resend for email
 - Server-side PDF and Excel generation for statements and packages
@@ -246,7 +248,7 @@ This system holds SINs, bank details and ownership records, so it is built to a 
 - Row-level security so holders only ever read their own rows; all admin actions go through server code
 - Field-level encryption for SIN and banking details; admins see them masked unless a reveal is logged
 - Daily backups with point-in-time recovery, plus a restore test before launch
-- Separate staging and production projects; no real holder data in staging
+- Separate staging and production Railway environments; no real holder data in staging
 - Session timeout, login alerts, and an audit log nobody can edit
 - Compliance with BC's Personal Information Protection Act (PIPA): a privacy notice at onboarding and a stated retention period
 
