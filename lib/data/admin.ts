@@ -1,0 +1,239 @@
+import "server-only";
+import { withContext, type DbContext } from "@/lib/db";
+import type { PersonRow } from "@/lib/people/csv";
+
+export const SYSTEM_HOLDERS = {
+  vrh: { name: "Van Ruitenburg Holdings Ltd.", type: "entity" },
+  opening_balance: { name: "Opening balance (pre-system)", type: "system" },
+} as const;
+
+export interface PersonListItem {
+  id: string;
+  type: string;
+  name: string;
+  email: string | null;
+  hire_date: string | null;
+  status: string;
+  system_key: string | null;
+  shares: string;
+  has_account: boolean;
+  mfa_enabled: boolean;
+  passkeys: number;
+  is_admin: boolean;
+}
+
+export async function listPeople(ctx: DbContext): Promise<PersonListItem[]> {
+  const r = await withContext(ctx, (tx) =>
+    tx.query<PersonListItem>(
+      `SELECT p.id, p.type, p.name, p.email, p.hire_date, p.status, p.system_key,
+              coalesce(h.shares, 0)::text AS shares,
+              coalesce(a.has_account, false) AS has_account,
+              coalesce(a.mfa_enabled, false) AS mfa_enabled,
+              coalesce(a.passkeys, 0) AS passkeys,
+              EXISTS (SELECT 1 FROM user_roles r WHERE r.person_id = p.id AND r.role = 'admin') AS is_admin
+       FROM people p
+       LEFT JOIN holdings h ON h.holder_id = p.id
+       LEFT JOIN app.account_status() a ON a.person_id = p.id
+       ORDER BY p.system_key IS NULL, p.name`,
+    ),
+  );
+  return r.rows;
+}
+
+export interface PersonDetail extends PersonListItem {
+  departure_date: string | null;
+  departure_reason: string | null;
+  tax_residency: string | null;
+  sin_last4: string | null;
+  bank_last4: string | null;
+  has_sin: boolean;
+  has_bank: boolean;
+}
+
+export async function getPerson(ctx: DbContext, id: string): Promise<PersonDetail | null> {
+  const r = await withContext(ctx, (tx) =>
+    tx.query<PersonDetail>(
+      `SELECT p.id, p.type, p.name, p.email, p.hire_date, p.status, p.system_key,
+              p.departure_date, p.departure_reason, p.tax_residency, p.sin_last4, p.bank_last4,
+              p.sin_ciphertext IS NOT NULL AS has_sin, p.bank_ciphertext IS NOT NULL AS has_bank,
+              coalesce(h.shares, 0)::text AS shares,
+              coalesce(a.has_account, false) AS has_account,
+              coalesce(a.mfa_enabled, false) AS mfa_enabled,
+              coalesce(a.passkeys, 0) AS passkeys,
+              EXISTS (SELECT 1 FROM user_roles r WHERE r.person_id = p.id AND r.role = 'admin') AS is_admin
+       FROM people p
+       LEFT JOIN holdings h ON h.holder_id = p.id
+       LEFT JOIN app.account_status() a ON a.person_id = p.id
+       WHERE p.id = $1`,
+      [id],
+    ),
+  );
+  return r.rows[0] ?? null;
+}
+
+export interface ImportResult {
+  inserted: number;
+  updated: number;
+  unchanged: number;
+}
+
+/**
+ * Insert new people and sync existing ones (matched by email) in one transaction.
+ * Existing people keep their id, ledger history and encrypted fields.
+ */
+export async function importPeople(ctx: DbContext, rows: PersonRow[]): Promise<ImportResult> {
+  return withContext(ctx, async (tx) => {
+    const result: ImportResult = { inserted: 0, updated: 0, unchanged: 0 };
+    for (const row of rows) {
+      const r = await tx.query<{ inserted: boolean; changed: boolean }>(
+        `WITH upsert AS (
+           INSERT INTO people (type, name, email, hire_date, status)
+           VALUES ($1, $3, $2, $4, $5)
+           ON CONFLICT (email) DO UPDATE
+             SET type = EXCLUDED.type, name = EXCLUDED.name, hire_date = EXCLUDED.hire_date, status = EXCLUDED.status
+             WHERE (people.type, people.name, people.hire_date, people.status)
+                   IS DISTINCT FROM (EXCLUDED.type, EXCLUDED.name, EXCLUDED.hire_date, EXCLUDED.status)
+           RETURNING (xmax = 0) AS inserted
+         )
+         SELECT coalesce((SELECT inserted FROM upsert), false) AS inserted,
+                EXISTS (SELECT 1 FROM upsert) AS changed`,
+        [row.type, row.email, row.name, row.hireDate, row.status],
+      );
+      const { inserted, changed } = r.rows[0]!;
+      if (inserted) result.inserted++;
+      else if (changed) result.updated++;
+      else result.unchanged++;
+    }
+    return result;
+  });
+}
+
+/** Create VRH and the opening-balance holder if they don't exist yet. Idempotent. */
+export async function ensureSystemHolders(ctx: DbContext): Promise<void> {
+  await withContext(ctx, async (tx) => {
+    for (const [key, h] of Object.entries(SYSTEM_HOLDERS)) {
+      await tx.query(
+        `INSERT INTO people (type, name, system_key) SELECT $1, $2, $3
+         WHERE NOT EXISTS (SELECT 1 FROM people WHERE system_key = $3)`,
+        [h.type, h.name, key],
+      );
+    }
+  });
+}
+
+export async function getSystemHolderIds(ctx: DbContext): Promise<{ vrh: string | null; opening: string | null }> {
+  const r = await withContext(ctx, (tx) =>
+    tx.query<{ system_key: string; id: string }>("SELECT system_key, id FROM people WHERE system_key IS NOT NULL"),
+  );
+  const by = new Map(r.rows.map((x) => [x.system_key, x.id]));
+  return { vrh: by.get("vrh") ?? null, opening: by.get("opening_balance") ?? null };
+}
+
+export interface OpeningEntry {
+  id: string;
+  entry_date: string;
+  holder_id: string;
+  holder_name: string;
+  shares: string;
+  price_cents: string;
+  memo: string | null;
+  created_by: string;
+  created_at: string;
+  reversed_by: string | null;
+}
+
+export async function listOpeningBalances(ctx: DbContext): Promise<OpeningEntry[]> {
+  const r = await withContext(ctx, (tx) =>
+    tx.query<OpeningEntry>(
+      `SELECT l.id::text, l.entry_date, l.to_holder_id AS holder_id, p.name AS holder_name,
+              l.shares::text, l.price_cents::text, l.memo, l.created_by, l.created_at::text,
+              (SELECT c.id::text FROM share_ledger c WHERE c.reverses_entry_id = l.id) AS reversed_by
+       FROM share_ledger l JOIN people p ON p.id = l.to_holder_id
+       WHERE l.type = 'opening_balance'
+       ORDER BY l.id DESC`,
+    ),
+  );
+  return r.rows;
+}
+
+export async function recordOpeningBalance(
+  ctx: DbContext,
+  input: { holderId: string; shares: bigint; priceCents: bigint; entryDate: string; memo: string | null },
+): Promise<string> {
+  return withContext(ctx, async (tx) => {
+    const r = await tx.query<{ id: string }>(
+      `INSERT INTO share_ledger (entry_date, type, from_holder_id, to_holder_id, shares, price_cents, memo)
+       SELECT $1, 'opening_balance', o.id, $2, $3, $4, $5
+       FROM people o WHERE o.system_key = 'opening_balance'
+       RETURNING id::text`,
+      [input.entryDate, input.holderId, input.shares.toString(), input.priceCents.toString(), input.memo],
+    );
+    if (r.rowCount !== 1) throw new Error("Create the system holders first.");
+    return r.rows[0]!.id;
+  });
+}
+
+/** Reverse a ledger entry with an exactly mirrored correction entry. */
+export async function reverseShareEntry(ctx: DbContext, entryId: string, memo: string): Promise<void> {
+  await withContext(ctx, (tx) =>
+    tx.query(
+      `INSERT INTO share_ledger (entry_date, type, from_holder_id, to_holder_id, shares, price_cents, reverses_entry_id, memo)
+       SELECT current_date, 'correction', to_holder_id, from_holder_id, shares, price_cents, id, $2
+       FROM share_ledger WHERE id = $1`,
+      [entryId, memo],
+    ),
+  );
+}
+
+export interface AuditRow {
+  id: string;
+  at: string;
+  actor: string;
+  actor_name: string | null;
+  action: string;
+  table_name: string | null;
+  record_id: string | null;
+  before: Record<string, unknown> | null;
+  after: Record<string, unknown> | null;
+}
+
+export async function listAudit(
+  ctx: DbContext,
+  opts: { table?: string; actor?: string; record?: string; before?: string; limit?: number },
+): Promise<AuditRow[]> {
+  const r = await withContext(ctx, (tx) =>
+    tx.query<AuditRow>(
+      `SELECT a.id::text, a.at::text, a.actor, p.name AS actor_name, a.action, a.table_name, a.record_id, a.before, a.after
+       FROM audit_log a
+       LEFT JOIN people p ON p.id::text = a.actor
+       WHERE ($1::text IS NULL OR a.table_name = $1)
+         AND ($2::text IS NULL OR a.actor = $2)
+         AND ($3::text IS NULL OR a.record_id = $3)
+         AND ($4::bigint IS NULL OR a.id < $4)
+       ORDER BY a.id DESC
+       LIMIT $5`,
+      [opts.table ?? null, opts.actor ?? null, opts.record ?? null, opts.before ?? null, opts.limit ?? 50],
+    ),
+  );
+  return r.rows;
+}
+
+export async function logReveal(ctx: DbContext, field: "sin" | "bank", personId: string): Promise<{ ciphertext: string | null }> {
+  return withContext(ctx, async (tx) => {
+    // Log first, in the same transaction: if logging fails, nothing is revealed.
+    await tx.query("SELECT app.log_event($1, 'people', $2)", [`reveal.${field}`, personId]);
+    const col = field === "sin" ? "sin_ciphertext" : "bank_ciphertext";
+    const r = await tx.query<{ ct: string | null }>(`SELECT ${col} AS ct FROM people WHERE id = $1`, [personId]);
+    return { ciphertext: r.rows[0]?.ct ?? null };
+  });
+}
+
+/** A numeric program rule from the settings table (never hard-coded). */
+export async function getIntSetting(ctx: DbContext, key: string): Promise<number> {
+  const r = await withContext(ctx, (tx) =>
+    tx.query<{ v: string }>("SELECT int_value::text AS v FROM current_settings WHERE key = $1", [key]),
+  );
+  const v = r.rows[0]?.v;
+  if (v === undefined) throw new Error(`Setting ${key} is missing`);
+  return Number(v);
+}
