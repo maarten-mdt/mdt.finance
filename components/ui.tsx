@@ -21,15 +21,24 @@ export function Field({
   hint,
   ...props
 }: InputHTMLAttributes<HTMLInputElement> & { label: string; hint?: string }) {
+  const id = props.id ?? `f-${props.name ?? label.toLowerCase().replace(/\W+/g, "-")}`;
   return (
-    <label className="block">
-      <span className="text-sm font-medium">{label}</span>
+    <div>
+      <label htmlFor={id} className="text-sm font-medium">
+        {label}
+      </label>
       <input
         {...props}
+        id={id}
+        aria-describedby={hint ? `${id}-hint` : undefined}
         className="mt-1 block w-full rounded-lg border border-line bg-white px-3 py-3 text-base outline-none focus:border-ink focus:ring-2 focus:ring-ink/10"
       />
-      {hint && <span className="mt-1 block text-xs text-muted">{hint}</span>}
-    </label>
+      {hint && (
+        <p id={`${id}-hint`} className="mt-1 text-xs text-muted">
+          {hint}
+        </p>
+      )}
+    </div>
   );
 }
 
