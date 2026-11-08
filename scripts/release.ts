@@ -1,9 +1,10 @@
 /**
  * Railway pre-deploy step. Runs inside Railway's private network before each deploy:
  *   1. Apply migrations (always).
- *   2. If SEED_ON_DEPLOY=true and APP_ENV is not production: seed fake data once.
- *   3. If BOOTSTRAP_ADMIN_EMAIL is set and that admin has no login yet and no unused invite:
+ *   2. If BOOTSTRAP_ADMIN_EMAIL is set and that admin has no login yet and no unused invite:
  *      create them as an admin and print a one-time invite link to the deploy log.
+ *   3. If SEED_ON_DEPLOY=true and APP_ENV is not production: seed fake data once, and add any
+ *      missing seed history to an existing seed.
  *
  * Env: DATABASE_OWNER_URL, APP_DB_PASSWORD, AUTH_DB_PASSWORD, BETTER_AUTH_URL, APP_ENV,
  *      SEED_ON_DEPLOY, BOOTSTRAP_ADMIN_EMAIL, BOOTSTRAP_ADMIN_NAME, BOOTSTRAP_ADMIN_HIRE_DATE
@@ -23,12 +24,6 @@ async function main() {
   const isProd = process.env.APP_ENV === "production";
   const c = await ownerClient("system:release");
   try {
-    if (process.env.SEED_ON_DEPLOY === "true" && !isProd) {
-      const seeded = await c.query("SELECT 1 FROM people WHERE system_key = 'vrh'");
-      if (seeded.rowCount) console.log("seed: already seeded, skipping");
-      else execFileSync("npx", ["tsx", "scripts/seed.ts"], { stdio: "inherit", env: process.env });
-    }
-
     const email = process.env.BOOTSTRAP_ADMIN_EMAIL?.trim().toLowerCase();
     if (email) {
       const r = await c.query<{ id: string | null; has_login: boolean; open_invite: boolean }>(
@@ -60,6 +55,12 @@ async function main() {
         await c.query("COMMIT");
         console.log(`bootstrap admin: one-time invite for ${email} (expires in 72 hours):\n  ${link}`);
       }
+    }
+
+    if (process.env.SEED_ON_DEPLOY === "true" && !isProd) {
+      const seeded = await c.query("SELECT 1 FROM people WHERE system_key = 'vrh'");
+      // A fresh database gets the full seed; an existing one only gets any missing history.
+      execFileSync("npx", ["tsx", "scripts/seed.ts", ...(seeded.rowCount ? ["--history"] : [])], { stdio: "inherit", env: process.env });
     }
   } catch (e) {
     await c.query("ROLLBACK").catch(() => {});
