@@ -29,7 +29,9 @@ export default async function globalSetup() {
   const holder = (
     await c.query<{ id: string; email: string; shares: string }>(
       `SELECT p.id, p.email, h.shares::text FROM people p JOIN holdings h ON h.holder_id = p.id
-       WHERE p.type = 'employee' AND h.shares > 0 ORDER BY p.email LIMIT 1`,
+       WHERE p.type = 'employee' AND h.shares > 0
+         AND EXISTS (SELECT 1 FROM share_ledger l WHERE l.to_holder_id = p.id AND l.type = 'opening_balance')
+       ORDER BY p.email LIMIT 1`,
     )
   ).rows[0]!;
   const invite = await insertInvite(c, holder.id, process.env.BETTER_AUTH_URL!);

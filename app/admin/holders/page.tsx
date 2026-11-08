@@ -59,7 +59,7 @@ export default async function HoldersPage() {
         <OpeningBalanceForm holders={choices} />
       </Card>
 
-      <Card className="overflow-x-auto p-0">
+      <Card flush className="overflow-x-auto">
         <table className="w-full text-sm" data-testid="opening-table">
           <thead className="border-b border-line text-left text-xs uppercase tracking-wide text-muted">
             <tr>

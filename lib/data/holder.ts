@@ -2,13 +2,33 @@ import "server-only";
 import { withContext, type DbContext } from "@/lib/db";
 import {
   costBasisCents,
+  creditSummary,
   eligibilityDate,
   isEligible,
   valueCents,
+  valueHistory,
+  withoutReversed,
   type Cents,
+  type CreditEntry,
+  type CreditSummary,
+  type CreditType,
   type LedgerEntry,
+  type PricePoint,
   type Shares,
+  type ValuePoint,
 } from "@/lib/calc";
+
+export type MovementKind = "vrh_sale" | "holder_transfer" | "vrh_buyback" | "opening_balance" | "correction";
+
+export interface Movement {
+  id: string;
+  date: string;
+  kind: MovementKind;
+  direction: "in" | "out";
+  shares: Shares;
+  priceCents: Cents;
+  amountCents: Cents;
+}
 
 export interface Dashboard {
   name: string;
@@ -22,12 +42,19 @@ export interface Dashboard {
   eligibleOn: string | null;
   eligible: boolean;
   eligibilityYears: number;
+  credit: CreditSummary;
+  /** Share movements, oldest first, without reversed entries or their corrections. */
+  movements: Movement[];
+  /** Every board-approved price, oldest first. */
+  prices: (PricePoint & { year: number })[];
+  /** The holder's position at each valuation date. */
+  history: ValuePoint[];
 }
 
 const SELF = "self";
 const COUNTERPARTY = "counterparty";
 
-/** Everything the read-only holder dashboard shows, computed from the ledger. */
+/** Everything the holder dashboard shows, computed from the ledgers. */
 export async function getDashboard(ctx: DbContext, today: string): Promise<Dashboard | null> {
   return withContext(ctx, async (tx) => {
     const person = (
@@ -37,14 +64,22 @@ export async function getDashboard(ctx: DbContext, today: string): Promise<Dashb
     ).rows[0];
     if (!person) return null;
 
-    const entries = (
-      await tx.query<{ id: string; entry_date: string; direction: "in" | "out"; shares: string; price_cents: string; reverses_entry_id: string | null }>(
-        "SELECT id::text, entry_date, direction, shares::text, price_cents::text, reverses_entry_id::text FROM app.my_share_entries()",
+    const rows = (
+      await tx.query<{
+        id: string;
+        entry_date: string;
+        type: MovementKind;
+        direction: "in" | "out";
+        shares: string;
+        price_cents: string;
+        reverses_entry_id: string | null;
+      }>(
+        "SELECT id::text, entry_date, type, direction, shares::text, price_cents::text, reverses_entry_id::text FROM app.my_share_entries()",
       )
     ).rows;
 
     // my_share_entries hides the counterparty, so model each movement as self ↔ "counterparty".
-    const ledger: LedgerEntry[] = entries.map((e) => ({
+    const ledger: LedgerEntry[] = rows.map((e) => ({
       id: e.id,
       date: e.entry_date,
       from: e.direction === "in" ? COUNTERPARTY : SELF,
@@ -53,38 +88,63 @@ export async function getDashboard(ctx: DbContext, today: string): Promise<Dashb
       priceCents: BigInt(e.price_cents),
       reversesId: e.reverses_entry_id,
     }));
+    const kindById = new Map(rows.map((r) => [r.id, r.type]));
+    const movements: Movement[] = withoutReversed(ledger).map((l) => ({
+      id: l.id,
+      date: l.date,
+      kind: kindById.get(l.id)!,
+      direction: l.to === SELF ? "in" : "out",
+      shares: l.shares,
+      priceCents: l.priceCents,
+      amountCents: valueCents(l.shares, l.priceCents),
+    }));
     const shares = BigInt((await tx.query<{ b: string }>("SELECT app.my_share_balance()::text AS b")).rows[0]!.b);
 
-    const cycle = (
-      await tx.query<{ year: number; price_per_share_cents: string }>(
-        "SELECT year, price_per_share_cents::text FROM cycles WHERE locked_at IS NOT NULL ORDER BY year DESC LIMIT 1",
+    const prices = (
+      await tx.query<{ year: number; settlement_date: string; price_per_share_cents: string }>(
+        "SELECT year, settlement_date, price_per_share_cents::text FROM cycles WHERE locked_at IS NOT NULL ORDER BY year",
       )
-    ).rows[0];
-    const priceCents = cycle ? BigInt(cycle.price_per_share_cents) : null;
+    ).rows.map((c) => ({ year: c.year, date: c.settlement_date, priceCents: BigInt(c.price_per_share_cents) }));
+    const latest = prices.at(-1) ?? null;
+
+    const credit = creditSummary(
+      (
+        await tx.query<{ id: string; type: CreditType; amount_cents: string; reverses_entry_id: string | null }>(
+          "SELECT id::text, type, amount_cents::text, reverses_entry_id::text FROM credit_ledger WHERE person_id = app.current_person_id()",
+        )
+      ).rows.map(
+        (r): CreditEntry => ({ id: r.id, type: r.type, amountCents: BigInt(r.amount_cents), reversesId: r.reverses_entry_id }),
+      ),
+    );
 
     const years = (
       await tx.query<{ int_value: string }>("SELECT int_value::text FROM current_settings WHERE key = 'eligibility_years'")
     ).rows[0];
     if (!years) throw new Error("Setting eligibility_years is missing");
+    const eligibilityYears = Number(years.int_value);
 
     let eligibleOn: string | null = null;
     let eligible = person.type !== "employee";
     if (person.type === "employee" && person.hire_date) {
-      eligible = isEligible(person.hire_date, today, Number(years.int_value));
-      if (!eligible) eligibleOn = eligibilityDate(person.hire_date, Number(years.int_value));
+      eligible = isEligible(person.hire_date, today, eligibilityYears);
+      if (!eligible) eligibleOn = eligibilityDate(person.hire_date, eligibilityYears);
     }
 
     return {
       name: person.name,
       type: person.type,
       shares,
-      priceCents,
-      priceYear: cycle?.year ?? null,
-      valueCents: priceCents === null ? null : valueCents(shares, priceCents),
+      priceCents: latest?.priceCents ?? null,
+      priceYear: latest?.year ?? null,
+      valueCents: latest ? valueCents(shares, latest.priceCents) : null,
       costBasisCents: costBasisCents(ledger, SELF),
       eligibleOn,
       eligible,
-      eligibilityYears: Number(years.int_value),
+      eligibilityYears,
+      credit,
+      movements,
+      prices,
+      history: valueHistory(ledger, SELF, prices),
     };
   });
 }

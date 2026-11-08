@@ -49,7 +49,7 @@ export default async function PeoplePage() {
         ))}
       </ul>
 
-      <Card className="hidden overflow-x-auto p-0 sm:block">
+      <Card flush className="hidden overflow-x-auto sm:block">
         <table className="w-full text-sm" data-testid="people-table">
           <thead className="border-b border-line text-left text-xs uppercase tracking-wide text-muted">
             <tr>

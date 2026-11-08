@@ -47,6 +47,18 @@ test("invited holder sets up MFA, sees only their dashboard, and signs back in w
   await expect(page.getByTestId("shares")).toHaveText(Number(shares).toLocaleString("en-US"));
   await expect(page.getByText("2026 valuation")).toBeVisible();
 
+  // Cash, charts and share history (seed: dividends, 2021–2026 prices).
+  await expect(page.getByTestId("cash-balance")).toHaveText(/^\$[\d,]+\.\d{2}$/);
+  await expect(page.getByTestId("cash-breakdown")).toContainText("Dividends earned");
+  await expect(page.getByRole("heading", { name: "Price per share by year" })).toBeVisible();
+  await expect(page.getByRole("img", { name: /Price per share by year/ })).toBeVisible();
+  await expect(page.getByTestId("history-list")).toContainText("Bought");
+  await expect(page.getByRole("img", { name: /Value of your shares/ })).toBeVisible();
+  if (process.env.SCREENSHOT_DIR) {
+    await page.getByRole("img", { name: /Value of your shares/ }).focus();
+    await page.screenshot({ path: `${process.env.SCREENSHOT_DIR}/dashboard-mobile.png`, fullPage: true });
+  }
+
   // 4. A holder can't open the admin console.
   await page.goto("/admin");
   await expect(page).toHaveURL(/\/dashboard/);

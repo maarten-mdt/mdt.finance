@@ -73,8 +73,10 @@ export function Alert({ tone = "error", children }: { tone?: "error" | "info" | 
   );
 }
 
-export function Card({ children, className = "" }: { children: ReactNode; className?: string }) {
-  return <section className={`rounded-xl border border-line bg-white p-4 sm:p-5 ${className}`}>{children}</section>;
+export function Card({ children, className = "", flush = false }: { children: ReactNode; className?: string; flush?: boolean }) {
+  return (
+    <section className={`rounded-xl border border-line bg-white ${flush ? "overflow-hidden" : "p-4 sm:p-5"} ${className}`}>{children}</section>
+  );
 }
 
 export function Stat({ label, value, sub }: { label: string; value: ReactNode; sub?: ReactNode }) {
