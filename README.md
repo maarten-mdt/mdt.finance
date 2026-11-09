@@ -125,5 +125,6 @@ App service variables:
 | `PASSKEY_RP_ID` | `<domain>` (`mdt.finance` in production) |
 | `SEED_ON_DEPLOY` | `true` on staging only |
 | `BOOTSTRAP_ADMIN_EMAIL`, `_NAME`, `_HIRE_DATE` | optional: first admin; the invite link is printed in the deploy log |
+| `RECOVER_ACCOUNT` | optional lock-out recovery: `email:one-time-code`. The next deploy clears that account's two-step sign-in, passkeys and sessions and prints a reset link in the deploy log. Each code works once; remove the variable afterwards |
 
 Staging: https://staging.mdt.finance (Cloudflare CNAME `staging`, proxied, to the Railway staging service)
