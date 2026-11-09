@@ -151,11 +151,11 @@ test("admin: passkey, import, opening balance, admin role, agreements, dividends
   await expect(page.getByTestId("import-errors")).toContainText("Line 3");
   await expect(page.getByRole("button", { name: /Import 1 people/ })).toBeDisabled();
 
-  await page.locator('input[type="file"]').setInputFiles({
-    name: "people.csv",
-    mimeType: "text/csv",
-    buffer: Buffer.from("name,email,hire_date,status,type\nNew Hire,new.hire@example.com,2025-03-01,active,employee\n"),
-  });
+  // Second try: paste rows copied from a spreadsheet (tab-separated) instead of uploading.
+  await page.goto("/admin/import");
+  await expect(page.getByLabel("Upload a CSV file")).toBeVisible();
+  if (process.env.SCREENSHOT_DIR) await page.screenshot({ path: `${process.env.SCREENSHOT_DIR}/import.png`, fullPage: true });
+  await page.getByLabel("Paste the rows").fill("name\temail\thire_date\tstatus\ttype\nNew Hire\tnew.hire@example.com\t2025-03-01\tactive\temployee\n");
   await page.getByRole("button", { name: "Preview" }).click();
   await page.getByRole("button", { name: "Import 1 people" }).click();
   await expect(page.getByText("1 added, 0 updated")).toBeVisible();
