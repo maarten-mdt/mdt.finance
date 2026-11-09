@@ -1,6 +1,7 @@
 import { readFileSync } from "node:fs";
 import { devices, expect, test } from "@playwright/test";
 import { generateSync } from "otplib";
+import { formatShares, parseShares } from "../../lib/calc";
 import { STATE_FILE } from "./global-setup";
 
 const PASSWORD = "correct horse battery staple";
@@ -56,7 +57,7 @@ test("invited holder sets up MFA, sees only their dashboard, and signs back in w
 
   // 3. Dashboard shows this holder's own balance, computed from the ledger.
   await expect(page).toHaveURL(/\/dashboard/);
-  await expect(page.getByTestId("shares")).toHaveText(Number(shares).toLocaleString("en-US"));
+  await expect(page.getByTestId("shares")).toHaveText(formatShares(BigInt(shares)));
   await expect(page.getByText("2026 valuation")).toBeVisible();
   // Held since 2025: an annualized return is shown.
   await expect(page.getByTestId("annualized")).toHaveText(/^[+−]?\d+\.\d{2}%$/);
@@ -92,7 +93,7 @@ test("invited holder sets up MFA, sees only their dashboard, and signs back in w
   holder.secret = secret;
   holder.lastCode = secondCode;
   await expect(page).toHaveURL(/\/dashboard/);
-  await expect(page.getByTestId("shares")).toHaveText(Number(shares).toLocaleString("en-US"));
+  await expect(page.getByTestId("shares")).toHaveText(formatShares(BigInt(shares)));
 
   // 6. The invite link can't be used twice.
   await page.goto(invite);
@@ -249,7 +250,32 @@ test("admin: passkey, import, opening balance, admin role, agreements, dividends
   await page.getByLabel("Seller").selectOption(holderId);
   await page.getByLabel("Buyer").selectOption({ label: "New Hire" });
   await page.getByRole("button", { name: "Record sale" }).click();
-  await expect(page.getByText("The seller doesn't have 999,999 shares.")).toBeVisible();
+  await expect(page.getByText("The seller doesn't hold that many shares on the ledger.")).toBeVisible();
+
+  // ---- Edit shares by person: add 10.50 newly issued shares on the holder's own page ----
+  await page.goto(`/admin/people/${holderId}`);
+  const before = parseShares((await page.getByTestId("person-shares").textContent())!);
+  const move = page.getByTestId("share-move-form");
+  await move.getByLabel("From", { exact: true }).selectOption({ label: "Issued by MDT / pre-portal" });
+  await move.getByLabel("Shares", { exact: true }).fill("10.50");
+  await move.getByLabel("Price per share ($)").fill("0");
+  await move.getByRole("button", { name: "Add shares" }).click();
+  await expect(page.getByText("Added 10.50 shares at $0.00 ($0.00 total).")).toBeVisible();
+  await expect(page.getByTestId("person-shares")).toHaveText(formatShares(before + 1050n));
+  await expect(page.getByTestId("person-ledger")).toContainText("Issued by MDT / pre-portal");
+
+  // ---- Import share history: an unknown name blocks it; a clean row is recorded ----
+  await page.goto("/admin/import/shares");
+  await page.getByLabel("Or paste the rows").fill("date\tfrom\tto\tshares\tprice_per_share\tamount\tnote\n2026-02-04\tIssued by MDT\tNobody Known\t1\t1\t\t\n");
+  await page.getByRole("button", { name: "Preview" }).click();
+  await expect(page.getByTestId("ledger-import-errors")).toContainText("Nobody Known");
+  await page.getByLabel("Or paste the rows").fill(
+    "date\tfrom\tto\tshares\tprice_per_share\tamount\tnote\n2026-02-04\tIssued by MDT\tNew Hire\t12.86\t388.73\t5,000.00\tOption exercise\n",
+  );
+  await page.getByRole("button", { name: "Preview" }).click();
+  await expect(page.getByTestId("ledger-import-preview")).toContainText("12.86");
+  await page.getByRole("button", { name: "Record 1 movements" }).click();
+  await expect(page.getByText("Recorded 1 share movements.")).toBeVisible();
 
   // ---- The holder signs in elsewhere and returns the signed agreement ----
   const holderCtx = await browser.newContext({ ...devices["Pixel 7"], baseURL: page.url().replace(/\/admin.*$/, "") });
