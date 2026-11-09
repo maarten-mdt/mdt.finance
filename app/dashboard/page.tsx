@@ -3,7 +3,9 @@ import { LineChart, type ChartSeries } from "@/components/line-chart";
 import { Card, Stat } from "@/components/ui";
 import { formatBps, formatCents, formatShares, ratioBps } from "@/lib/calc";
 import { holderContext, requireViewer } from "@/lib/auth/guards";
+import { listMyDocuments } from "@/lib/data/documents";
 import { getDashboard, todayInVancouver, type Movement } from "@/lib/data/holder";
+import { AgreementCard } from "./agreement-card";
 
 export const dynamic = "force-dynamic";
 
@@ -31,7 +33,7 @@ function signedCents(c: bigint): string {
 
 export default async function DashboardPage() {
   const viewer = await requireViewer();
-  const d = await getDashboard(holderContext(viewer), todayInVancouver());
+  const [d, docs] = await Promise.all([getDashboard(holderContext(viewer), todayInVancouver()), listMyDocuments(holderContext(viewer))]);
   if (!d) throw new Error("Your shareholder record could not be found.");
 
   const gain = d.valueCents === null ? null : d.valueCents - d.costBasisCents;
@@ -104,6 +106,10 @@ export default async function DashboardPage() {
             </p>
           </Card>
         )}
+
+        <AgreementCard
+          docs={docs.map((x) => ({ id: x.id, version: x.version, status: x.status, signedOn: x.signed_on, note: x.note }))}
+        />
 
         {/* Position */}
         <Card>

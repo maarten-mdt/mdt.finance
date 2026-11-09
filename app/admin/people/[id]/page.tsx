@@ -5,15 +5,19 @@ import { addYears, formatShares } from "@/lib/calc";
 import { maskBank, maskSin } from "@/lib/crypto/fields";
 import { adminContext, requireAdmin } from "@/lib/auth/guards";
 import { getIntSetting, getPerson } from "@/lib/data/admin";
+import { listDocumentsFor } from "@/lib/data/documents";
+import { todayInVancouver } from "@/lib/data/holder";
+import { AgreementSection } from "./agreement-section";
 import { AdminRoleButton, InviteButton, RevealField } from "./person-actions";
 
 export default async function PersonPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
   if (!/^[0-9a-f-]{36}$/.test(id)) notFound();
   const viewer = await requireAdmin();
-  const [p, eligibilityYears] = await Promise.all([
+  const [p, eligibilityYears, docs] = await Promise.all([
     getPerson(adminContext(viewer), id),
     getIntSetting(adminContext(viewer), "eligibility_years"),
+    listDocumentsFor(adminContext(viewer), id),
   ]);
   if (!p) notFound();
 
@@ -48,6 +52,24 @@ export default async function PersonPage({ params }: { params: Promise<{ id: str
 
       {!p.system_key && (
         <>
+          {p.email && (
+            <AgreementSection
+              personId={p.id}
+              today={todayInVancouver()}
+              docs={docs.map((d) => ({
+                id: d.id,
+                version: d.version,
+                status: d.status,
+                signedOn: d.signed_on,
+                sentAt: d.sent_at,
+                returnedAt: d.returned_at,
+                note: d.note,
+                signedFileId: d.signed_file_id,
+                templateFileId: d.template_file_id,
+              }))}
+            />
+          )}
+
           <Card className="space-y-3">
             <h2 className="font-semibold">Sensitive details</h2>
             <p className="text-xs text-muted">Shown masked. Every reveal is recorded in the audit log under your name.</p>

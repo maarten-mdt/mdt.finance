@@ -3,7 +3,7 @@ import { Card } from "@/components/ui";
 import { adminContext, requireAdmin } from "@/lib/auth/guards";
 import { listAudit } from "@/lib/data/admin";
 
-const TABLES = ["people", "share_ledger", "credit_ledger", "settings", "cycles", "user_roles", "invites", "user", "passkey", "session"];
+const TABLES = ["people", "share_ledger", "credit_ledger", "dividends", "dividend_allocations", "documents", "files", "agreement_templates", "settings", "cycles", "user_roles", "invites", "user", "passkey", "session"];
 
 function diff(before: Record<string, unknown> | null, after: Record<string, unknown> | null): string[] {
   if (!before) return after ? Object.entries(after).filter(([, v]) => v !== null).map(([k, v]) => `${k}: ${JSON.stringify(v)}`) : [];

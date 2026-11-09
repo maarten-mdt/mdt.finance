@@ -27,8 +27,8 @@ export default async function globalSetup() {
   await c.connect();
   await c.query("SELECT set_config('app.actor_id', 'system:e2e', false)");
   const holder = (
-    await c.query<{ id: string; email: string; shares: string }>(
-      `SELECT p.id, p.email, h.shares::text FROM people p JOIN holdings h ON h.holder_id = p.id
+    await c.query<{ id: string; email: string; shares: string; name: string }>(
+      `SELECT p.id, p.email, h.shares::text, p.name FROM people p JOIN holdings h ON h.holder_id = p.id
        WHERE p.type = 'employee' AND h.shares > 0
          AND EXISTS (SELECT 1 FROM share_ledger l WHERE l.to_holder_id = p.id AND l.type = 'opening_balance')
        ORDER BY p.email LIMIT 1`,
@@ -47,6 +47,6 @@ export default async function globalSetup() {
   await c.end();
   writeFileSync(
     STATE_FILE,
-    JSON.stringify({ invite, email: holder.email, shares: holder.shares, adminInvite, adminEmail: admin.email }),
+    JSON.stringify({ invite, email: holder.email, shares: holder.shares, holderId: holder.id, holderName: holder.name, adminInvite, adminEmail: admin.email }),
   );
 }
