@@ -1,7 +1,7 @@
 "use client";
 import { useActionState, useState } from "react";
 import { Alert, Button } from "@/components/ui";
-import { inviteAction, revealAction, type InviteState, type RevealState } from "../../actions";
+import { adminRoleAction, inviteAction, revealAction, type FormState, type InviteState, type RevealState } from "../../actions";
 
 export function RevealField({
   personId,
@@ -70,5 +70,30 @@ export function InviteButton({ personId, hasAccount }: { personId: string; hasAc
         </form>
       )}
     </div>
+  );
+}
+
+export function AdminRoleButton({ personId, name, isAdmin, isSelf }: { personId: string; name: string; isAdmin: boolean; isSelf: boolean }) {
+  const [state, action, pending] = useActionState<FormState, FormData>(adminRoleAction, {});
+  if (isSelf) return <p className="text-xs text-muted">You can&apos;t change your own admin role.</p>;
+  return (
+    <form
+      action={action}
+      onSubmit={(e) => {
+        const msg = isAdmin
+          ? `Remove ${name}'s admin role? They'll lose access to the admin console.`
+          : `Make ${name} an admin? They'll be able to see everyone's records, reveal SINs and banking details, and change people and balances.`;
+        if (!window.confirm(msg)) e.preventDefault();
+      }}
+      className="space-y-2"
+    >
+      {state.error && <Alert>{state.error}</Alert>}
+      {state.ok && <Alert tone="ok">{state.ok}</Alert>}
+      <input type="hidden" name="personId" value={personId} />
+      <input type="hidden" name="admin" value={isAdmin ? "false" : "true"} />
+      <Button type="submit" variant={isAdmin ? "danger" : "secondary"} disabled={pending}>
+        {isAdmin ? "Remove admin" : "Make admin"}
+      </Button>
+    </form>
   );
 }

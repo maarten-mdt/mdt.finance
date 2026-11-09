@@ -148,9 +148,17 @@ test("admin must add a passkey, then can import people, record an opening balanc
   await expect(page.getByText("Opening balance recorded.")).toBeVisible();
   await expect(page.getByTestId("opening-table")).toContainText("New Hire");
 
+  // Grant the admin role from the person page (confirm dialog accepted).
+  await page.getByTestId("opening-table").getByRole("link", { name: "New Hire" }).click();
+  page.once("dialog", (d) => d.accept());
+  await page.getByRole("button", { name: "Make admin" }).click();
+  await expect(page.getByText("Admin role granted.")).toBeVisible();
+
   // Both writes are in the audit log, attributed to this admin.
   await page.goto("/admin/audit?table=share_ledger");
   await expect(page.getByTestId("audit-list")).toContainText("opening_balance");
   await page.goto("/admin/audit?table=people");
   await expect(page.getByTestId("audit-list")).toContainText("new.hire@example.com");
+  await page.goto("/admin/audit?table=user_roles");
+  await expect(page.getByTestId("audit-list")).toContainText("INSERT");
 });

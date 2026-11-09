@@ -237,3 +237,12 @@ export async function getIntSetting(ctx: DbContext, key: string): Promise<number
   if (v === undefined) throw new Error(`Setting ${key} is missing`);
   return Number(v);
 }
+
+/** Grant or remove the admin role. The database blocks self-removal and removing the last admin. */
+export async function setAdminRole(ctx: DbContext, personId: string, admin: boolean): Promise<void> {
+  await withContext(ctx, (tx) =>
+    admin
+      ? tx.query("INSERT INTO user_roles (person_id, role) VALUES ($1, 'admin') ON CONFLICT DO NOTHING", [personId])
+      : tx.query("DELETE FROM user_roles WHERE person_id = $1 AND role = 'admin'", [personId]),
+  );
+}

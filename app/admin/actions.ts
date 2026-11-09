@@ -9,6 +9,7 @@ import {
   logReveal,
   recordOpeningBalance,
   reverseShareEntry,
+  setAdminRole,
   type ImportResult,
 } from "@/lib/data/admin";
 import { env } from "@/lib/env";
@@ -132,4 +133,20 @@ export async function revealAction(_prev: RevealState, form: FormData): Promise<
   } catch (e) {
     return { error: friendly(e) };
   }
+}
+
+// ---- Admin role ---------------------------------------------------------------------------------
+
+export async function adminRoleAction(_prev: FormState, form: FormData): Promise<FormState> {
+  const viewer = await requireAdmin();
+  const personId = String(form.get("personId") ?? "");
+  const makeAdmin = form.get("admin") === "true";
+  try {
+    await setAdminRole(adminContext(viewer), personId, makeAdmin);
+  } catch (e) {
+    return { error: friendly(e) };
+  }
+  revalidatePath(`/admin/people/${personId}`);
+  revalidatePath("/admin");
+  return { ok: makeAdmin ? "Admin role granted. They'll be asked to add a passkey before the admin console opens." : "Admin role removed." };
 }

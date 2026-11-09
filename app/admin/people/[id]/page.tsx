@@ -5,7 +5,7 @@ import { addYears, formatShares } from "@/lib/calc";
 import { maskBank, maskSin } from "@/lib/crypto/fields";
 import { adminContext, requireAdmin } from "@/lib/auth/guards";
 import { getIntSetting, getPerson } from "@/lib/data/admin";
-import { InviteButton, RevealField } from "./person-actions";
+import { AdminRoleButton, InviteButton, RevealField } from "./person-actions";
 
 export default async function PersonPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
@@ -67,6 +67,18 @@ export default async function PersonPage({ params }: { params: Promise<{ id: str
             </p>
             {p.email && p.status !== "departed" && <InviteButton personId={p.id} hasAccount={p.has_account} />}
           </Card>
+
+          {p.email && p.status !== "departed" && (
+            <Card className="space-y-3">
+              <h2 className="font-semibold">Admin access</h2>
+              <p className="text-sm text-muted">
+                {p.is_admin
+                  ? "This person is an admin. Admins sign in to the console with a passkey."
+                  : "Admins can see every record, reveal sensitive details and change people and balances."}
+              </p>
+              <AdminRoleButton personId={p.id} name={p.name} isAdmin={p.is_admin} isSelf={p.id === viewer.personId} />
+            </Card>
+          )}
         </>
       )}
 
