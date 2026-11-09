@@ -126,4 +126,4 @@ App service variables:
 | `SEED_ON_DEPLOY` | `true` on staging only |
 | `BOOTSTRAP_ADMIN_EMAIL`, `_NAME`, `_HIRE_DATE` | optional: first admin; the invite link is printed in the deploy log |
 
-Staging: https://mdtfinance-staging.up.railway.app
+Staging: https://staging.mdt.finance (Cloudflare CNAME `staging`, proxied, to the Railway staging service)
