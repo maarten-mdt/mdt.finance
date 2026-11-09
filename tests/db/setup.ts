@@ -83,6 +83,11 @@ export async function addPerson(
   p: { name: string; type?: string; email?: string | null; hire?: string | null; key?: string | null },
 ): Promise<string> {
   const type = p.type ?? "employee";
+  if (p.key) {
+    // Migrations create the system holders; reuse them.
+    const existing = await db.owner.query<{ id: string }>("UPDATE people SET name = $2 WHERE system_key = $1 RETURNING id", [p.key, p.name]);
+    if (existing.rows[0]) return existing.rows[0].id;
+  }
   const r = await db.owner.query<{ id: string }>(
     `INSERT INTO people (type, name, email, hire_date, status, system_key)
      VALUES ($1, $2, $3, $4, $5, $6) RETURNING id`,

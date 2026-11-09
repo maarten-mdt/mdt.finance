@@ -10,9 +10,12 @@ import {
   type LedgerEntry,
 } from "@/lib/calc";
 
+// Whole shares here; the ledger stores hundredths and the amount paid defaults to shares × price.
 const e = (p: Partial<LedgerEntry> & Pick<LedgerEntry, "id" | "date" | "from" | "to" | "shares" | "priceCents">): LedgerEntry => ({
   reversesId: null,
   ...p,
+  shares: p.shares * 100n,
+  amountCents: p.amountCents ?? p.shares * p.priceCents,
 });
 
 const ledger: LedgerEntry[] = [
@@ -24,9 +27,9 @@ const ledger: LedgerEntry[] = [
 describe("balanceAt / costBasisAt", () => {
   it("counts only movements on or before the date", () => {
     expect(balanceAt(ledger, "A", "2023-06-30")).toBe(0n);
-    expect(balanceAt(ledger, "A", "2023-07-01")).toBe(100n);
-    expect(balanceAt(ledger, "A", "2024-12-31")).toBe(150n);
-    expect(balanceAt(ledger, "A", "2026-01-01")).toBe(120n);
+    expect(balanceAt(ledger, "A", "2023-07-01")).toBe(10_000n);
+    expect(balanceAt(ledger, "A", "2024-12-31")).toBe(15_000n);
+    expect(balanceAt(ledger, "A", "2026-01-01")).toBe(12_000n);
   });
 
   it("cost basis follows average cost as of the date", () => {
@@ -47,8 +50,8 @@ describe("valueHistory", () => {
   it("gives one point per valuation from the first purchase, in date order", () => {
     const h = valueHistory(ledger, "A", prices);
     expect(h.map((p) => p.date)).toEqual(["2023-07-01", "2024-07-01", "2025-07-01"]);
-    expect(h[1]).toEqual({ date: "2024-07-01", shares: 150n, priceCents: 2000n, valueCents: 300_000n, costBasisCents: 250_000n });
-    expect(h[2]).toMatchObject({ shares: 120n, valueCents: 288_000n, costBasisCents: 200_000n });
+    expect(h[1]).toEqual({ date: "2024-07-01", shares: 15_000n, priceCents: 2000n, valueCents: 300_000n, costBasisCents: 250_000n });
+    expect(h[2]).toMatchObject({ shares: 12_000n, valueCents: 288_000n, costBasisCents: 200_000n });
   });
 
   it("is empty for someone who never held shares", () => {

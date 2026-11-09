@@ -1,4 +1,4 @@
-import { floorDiv, type Cents, type Shares } from "./money";
+import { floorDiv, roundDiv, SHARE_UNITS, type Cents, type Shares } from "./money";
 
 export interface HolderShares {
   holderId: string;
@@ -35,16 +35,18 @@ export function allocateByShares(totalCents: Cents, holders: readonly HolderShar
   return parts.map(({ holderId, shares, amountCents }) => ({ holderId, shares, amountCents }));
 }
 
-/** A fixed amount per share. */
+/** A fixed amount per whole share; fractional holdings are rounded to the nearest cent. */
 export function allocatePerShare(perShareCents: Cents, holders: readonly HolderShares[]): Allocation[] {
   if (perShareCents <= 0n) throw new RangeError("amount per share must be positive");
-  return holders.filter((h) => h.shares > 0n).map((h) => ({ holderId: h.holderId, shares: h.shares, amountCents: h.shares * perShareCents }));
+  return holders
+    .filter((h) => h.shares > 0n)
+    .map((h) => ({ holderId: h.holderId, shares: h.shares, amountCents: roundDiv(h.shares * perShareCents, SHARE_UNITS) }));
 }
 
-/** Total ÷ shares in hundredths of a cent (for display), rounded down. */
+/** Total ÷ whole shares, in hundredths of a cent (for display), rounded down. */
 export function perShareRate(totalCents: Cents, totalShares: Shares): bigint {
   if (totalShares <= 0n) throw new RangeError("no shares");
-  return floorDiv(totalCents * 100n, totalShares);
+  return floorDiv(totalCents * 100n * SHARE_UNITS, totalShares);
 }
 
 /** 333_333n → "$33.3333" */

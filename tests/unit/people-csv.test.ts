@@ -11,8 +11,8 @@ describe("parsePeopleCsv", () => {
     const { rows, errors } = parsePeopleCsv(csv);
     expect(errors).toEqual([]);
     expect(rows).toEqual([
-      { line: 2, name: "Jane Doe", email: "jane.doe@mdt.com", hireDate: "2019-04-01", status: "active", type: "employee" },
-      { line: 3, name: "Sam Investor", email: "sam@example.com", hireDate: null, status: "not_applicable", type: "outside_investor" },
+      { line: 2, name: "Jane Doe", email: "jane.doe@mdt.com", hireDate: "2019-04-01", status: "active", type: "employee", contactName: null },
+      { line: 3, name: "Sam Investor", email: "sam@example.com", hireDate: null, status: "not_applicable", type: "outside_investor", contactName: null },
     ]);
   });
 
@@ -51,6 +51,24 @@ describe("parsePeopleCsv", () => {
     const pasted = "name\temail\thire_date\tstatus\ttype\nJane Doe\tjane@mdttac.com\t2019-04-01\tactive\temployee\n";
     const { rows, errors } = parsePeopleCsv(pasted);
     expect(errors).toEqual([]);
-    expect(rows).toEqual([{ line: 2, name: "Jane Doe", email: "jane@mdttac.com", hireDate: "2019-04-01", status: "active", type: "employee" }]);
+    expect(rows).toEqual([
+      { line: 2, name: "Jane Doe", email: "jane@mdttac.com", hireDate: "2019-04-01", status: "active", type: "employee", contactName: null },
+    ]);
+  });
+
+  it("accepts companies with a contact person, and blank emails and hire dates", () => {
+    const { rows, errors } = parsePeopleCsv(
+      "name,email,hire_date,status,type,contact_name\n1076844 BC Ltd.,,,,company,Nathan Neels\nJohn Neels,,,,employee,\n",
+    );
+    expect(errors).toEqual([]);
+    expect(rows).toEqual([
+      { line: 2, name: "1076844 BC Ltd.", email: null, hireDate: null, status: "not_applicable", type: "company", contactName: "Nathan Neels" },
+      { line: 3, name: "John Neels", email: null, hireDate: null, status: "active", type: "employee", contactName: null },
+    ]);
+  });
+
+  it("matches people without email by name, so a name can't repeat", () => {
+    const { errors } = parsePeopleCsv("name,email,hire_date,status,type\nJohn,,,,employee\njohn,,,,employee\n");
+    expect(errors[0]!.message).toMatch(/name also appears on line 2/);
   });
 });

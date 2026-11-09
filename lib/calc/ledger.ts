@@ -6,8 +6,10 @@ export interface LedgerEntry {
   date: string; // YYYY-MM-DD
   from: string; // holder id
   to: string; // holder id
-  shares: Shares; // always > 0
-  priceCents: Cents;
+  shares: Shares; // hundredths of a share, always > 0
+  priceCents: Cents; // per whole share
+  /** What was actually paid for the whole entry (may differ from shares × price by rounding). */
+  amountCents: Cents;
   /** Set on a correction: the id of the entry this one reverses. */
   reversesId: string | null;
 }
@@ -34,7 +36,7 @@ export function withoutReversed(entries: readonly LedgerEntry[]): LedgerEntry[] 
 
 /**
  * Cost basis by the average-cost method (Canadian adjusted cost base).
- * Acquisitions add shares × price. A disposal removes the average cost of the shares sold.
+ * Acquisitions add the amount paid. A disposal removes the average cost of the shares sold.
  * Reversed entries and their corrections cancel out and are ignored.
  */
 export function costBasisCents(entries: readonly LedgerEntry[], holderId: string): Cents {
@@ -47,7 +49,7 @@ export function costBasisCents(entries: readonly LedgerEntry[], holderId: string
   for (const e of relevant) {
     if (e.to === holderId) {
       shares += e.shares;
-      cost += e.shares * e.priceCents;
+      cost += e.amountCents;
     } else {
       if (e.shares > shares) throw new RangeError(`holder ${holderId} disposes more shares than held`);
       cost -= e.shares === shares ? cost : floorDiv(cost * e.shares, shares);

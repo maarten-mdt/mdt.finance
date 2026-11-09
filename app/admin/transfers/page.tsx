@@ -82,7 +82,7 @@ export default async function TransfersPage() {
                   </td>
                   <td className="px-4 py-2.5 text-right tabular-nums">{formatShares(BigInt(m.shares))}</td>
                   <td className="px-4 py-2.5 text-right tabular-nums">{formatCents(BigInt(m.price_cents))}</td>
-                  <td className="px-4 py-2.5 text-right tabular-nums">{formatCents(BigInt(m.shares) * BigInt(m.price_cents))}</td>
+                  <td className="px-4 py-2.5 text-right tabular-nums">{formatCents(BigInt(m.amount_cents))}</td>
                   <td className="px-4 py-2.5 text-right">
                     {m.reversed_by ? (
                       <span className="text-xs">Reversed by #{m.reversed_by}</span>

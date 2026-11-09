@@ -7,7 +7,7 @@
  *
  * Env: DATABASE_OWNER_URL, APP_ENV (must not be "production")
  */
-import { pricePerShareCents } from "@/lib/calc";
+import { formatShares, pricePerShareCents } from "@/lib/calc";
 import { ownerClient } from "./lib";
 
 const FIRST = ["Avery", "Blake", "Casey", "Devon", "Emerson", "Finley", "Gray", "Harper", "Indy", "Jordan", "Kai", "Logan",
@@ -28,9 +28,9 @@ async function main() {
   if ((process.env.APP_ENV ?? "") === "production") throw new Error("Refusing to seed production.");
   const c = await ownerClient("system:seed");
   try {
-    const already = await c.query("SELECT 1 FROM people WHERE system_key = 'vrh'");
+    const already = await c.query("SELECT 1 FROM share_ledger LIMIT 1");
     if (already.rowCount) {
-      if (!process.argv.includes("--history")) throw new Error("Already seeded (VRH exists). Seed a fresh database instead.");
+      if (!process.argv.includes("--history")) throw new Error("Already seeded (the ledger has entries). Seed a fresh database instead.");
       await addHistory(c);
       await addTestPeople(c);
       return;
@@ -45,13 +45,17 @@ async function main() {
         )
       ).rows[0]!.id;
 
-    const opening = await ins("system", "Opening balance (pre-system)", null, null, "not_applicable", "opening_balance");
-    const vrh = await ins("entity", "Van Ruitenburg Holdings Ltd.", null, null, "not_applicable", "vrh");
+    // Migrations create the two system holders.
+    const sys = new Map(
+      (await c.query<{ system_key: string; id: string }>("SELECT system_key, id FROM people WHERE system_key IS NOT NULL")).rows.map((r) => [r.system_key, r.id]),
+    );
+    const opening = sys.get("opening_balance") ?? (await ins("system", "Opening balance (pre-system)", null, null, "not_applicable", "opening_balance"));
+    const vrh = sys.get("vrh") ?? (await ins("entity", "Van Ruitenburg Holdings Ltd.", null, null, "not_applicable", "vrh"));
 
     // VRH's holding of the new class before the first July 1 (SPEC open decision: issued or converted).
     await c.query(
-      `INSERT INTO share_ledger (entry_date, type, from_holder_id, to_holder_id, shares, price_cents, memo)
-       VALUES ('2026-06-30', 'opening_balance', $1, $2, 200000, 0, 'Staging seed: VRH holding of the new class')`,
+      `INSERT INTO share_ledger (entry_date, type, from_holder_id, to_holder_id, shares, price_cents, amount_cents, memo)
+       VALUES ('2026-06-30', 'opening_balance', $1, $2, 200000 * 100, 0, 0, 'Staging seed: VRH holding of the new class')`,
       [opening, vrh],
     );
 
@@ -94,8 +98,8 @@ async function main() {
           if (rand(3) === 0) {
             // Some bought before the portal existed: an opening balance at an older price.
             await c.query(
-              `INSERT INTO share_ledger (entry_date, type, from_holder_id, to_holder_id, shares, price_cents, memo)
-               VALUES ('2025-07-01', 'opening_balance', $1, $2, $3, 1850, 'Staging seed: pre-system purchase')`,
+              `INSERT INTO share_ledger (entry_date, type, from_holder_id, to_holder_id, shares, price_cents, amount_cents, memo)
+               VALUES ('2025-07-01', 'opening_balance', $1, $2, $3::bigint * 100, 1850, $3::bigint * 1850, 'Staging seed: pre-system purchase')`,
               [opening, id, String(20 + rand(200))],
             );
           }
@@ -110,8 +114,8 @@ async function main() {
 
     async function sale(personId: string, shares: bigint) {
       await c.query(
-        `INSERT INTO share_ledger (entry_date, type, from_holder_id, to_holder_id, shares, price_cents, cycle_id)
-         VALUES ('2026-07-01', 'vrh_sale', $1, $2, $3, $4, $5)`,
+        `INSERT INTO share_ledger (entry_date, type, from_holder_id, to_holder_id, shares, price_cents, amount_cents, cycle_id)
+         VALUES ('2026-07-01', 'vrh_sale', $1, $2, $3::bigint * 100, $4::bigint, $3::bigint * $4::bigint, $5)`,
         [vrh, personId, shares.toString(), price.toString(), cycle],
       );
     }
@@ -120,7 +124,7 @@ async function main() {
     await addHistory(c);
     await addTestPeople(c);
     const vrhLeft = (await c.query<{ shares: string }>("SELECT shares::text FROM holdings WHERE holder_id = $1", [vrh])).rows[0]!.shares;
-    console.log(`Seeded VRH (${vrhLeft} shares left), ${holders} fake holders, 3 not-yet-eligible employees.`);
+    console.log(`Seeded VRH (${formatShares(BigInt(vrhLeft))} shares left), ${holders} fake holders, 3 not-yet-eligible employees.`);
     console.log(`2026 price per share: $${(price / 100n).toString()}.${(price % 100n).toString().padStart(2, "0")}`);
   } catch (e) {
     await c.query("ROLLBACK").catch(() => {});
@@ -186,7 +190,7 @@ async function addHistory(c: Client) {
         )
       ).rows;
       if (!holders.length) continue;
-      const total = holders.reduce((a, h) => a + BigInt(h.shares) * dv.perShare, 0n);
+      const total = holders.reduce((a, h) => a + (BigInt(h.shares) * dv.perShare) / 100n, 0n);
       const id = (
         await c.query<{ id: string }>(
           `INSERT INTO dividends (declaration_date, record_date, amount_per_share_cents, total_cents, declared_by)
@@ -195,7 +199,7 @@ async function addHistory(c: Client) {
         )
       ).rows[0]!.id;
       for (const [i, h] of holders.entries()) {
-        const amount = BigInt(h.shares) * dv.perShare;
+        const amount = (BigInt(h.shares) * dv.perShare) / 100n; // whole shares in seed data, so exact
         // First dividend: every other holder had theirs paid out; the rest is still held as cash.
         const paid = dv.payoutOn !== null && (i + k) % 2 === 0;
         await c.query(
@@ -238,14 +242,15 @@ async function addSamplePosition(
   if ((await c.query("SELECT 1 FROM share_ledger WHERE to_holder_id = $1", [personId])).rowCount) return;
   for (const [date, n, price] of earlier) {
     await c.query(
-      `INSERT INTO share_ledger (entry_date, type, from_holder_id, to_holder_id, shares, price_cents, memo)
-       SELECT $1, 'opening_balance', id, $2, $3, $4, 'Staging seed: sample history' FROM people WHERE system_key = 'opening_balance'`,
+      `INSERT INTO share_ledger (entry_date, type, from_holder_id, to_holder_id, shares, price_cents, amount_cents, memo)
+       SELECT $1, 'opening_balance', id, $2, $3::bigint * 100, $4::bigint, $3::bigint * $4::bigint, 'Staging seed: sample history'
+       FROM people WHERE system_key = 'opening_balance'`,
       [date, personId, n, price],
     );
   }
   await c.query(
-    `INSERT INTO share_ledger (entry_date, type, from_holder_id, to_holder_id, shares, price_cents, cycle_id)
-     SELECT '2026-07-01', 'vrh_sale', v.id, $1, $2, cy.price_per_share_cents, cy.id
+    `INSERT INTO share_ledger (entry_date, type, from_holder_id, to_holder_id, shares, price_cents, amount_cents, cycle_id)
+     SELECT '2026-07-01', 'vrh_sale', v.id, $1, $2::bigint * 100, cy.price_per_share_cents, $2::bigint * cy.price_per_share_cents, cy.id
      FROM people v, cycles cy WHERE v.system_key = 'vrh' AND cy.year = 2026`,
     [personId, sharesIn2026],
   );
@@ -289,7 +294,7 @@ async function addTestPeople(c: Client) {
         if (dv) {
           const amount = 260n * BigInt(dv.per); // 120 + 80 + 60 shares on the record date
           await c.query(
-            "INSERT INTO dividend_allocations (dividend_id, person_id, shares_on_record_date, amount_cents) VALUES ($1, $2, 260, $3)",
+            "INSERT INTO dividend_allocations (dividend_id, person_id, shares_on_record_date, amount_cents) VALUES ($1, $2, 26000, $3)",
             [dv.id, id, amount.toString()],
           );
           await c.query(

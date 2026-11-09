@@ -29,7 +29,8 @@ export function formatSetting(key: string, value: bigint): string {
     case "years":
       return `${value.toString()} years`;
     case "shares":
-      return `${formatShares(value)} shares`;
+      // Stored in whole shares (the price-formula denominator); formatShares takes hundredths.
+      return `${formatShares(value * 100n)} shares`;
     default:
       return value.toString();
   }

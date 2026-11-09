@@ -35,10 +35,11 @@ export function TransferForm({ sellers, buyers, defaultPrice, today }: { sellers
           <Alert tone="ok">{state.ok}</Alert>
         </div>
       )}
-      <Select label="Seller" name="sellerId" options={sellers} />
-      <Select label="Buyer" name="buyerId" options={buyers} />
-      <Field label="Shares" name="shares" inputMode="numeric" pattern="[0-9,]+" required />
+      <Select label="Seller" name="fromId" options={sellers} />
+      <Select label="Buyer" name="toId" options={buyers} />
+      <Field label="Shares" name="shares" inputMode="decimal" placeholder="26.05" required hint="Up to two decimals." />
       <Field label="Price per share ($)" name="price" inputMode="decimal" defaultValue={defaultPrice} required hint="Defaults to the latest approved price." />
+      <Field label="Total paid ($, optional)" name="amount" inputMode="decimal" hint="Leave blank to use shares × price." />
       <Field label="Date of sale" name="date" type="date" defaultValue={today} required />
       <Field label="Note (optional)" name="memo" maxLength={200} />
       <div className="sm:col-span-2">

@@ -1,16 +1,19 @@
 import Papa from "papaparse";
 import { isValidDate } from "@/lib/calc";
 
-export const PERSON_TYPES = ["employee", "outside_investor"] as const;
+export const PERSON_TYPES = ["employee", "outside_investor", "company"] as const;
 export const STATUSES = ["active", "leave", "departed"] as const;
 
 export interface PersonRow {
   line: number;
   name: string;
-  email: string;
+  /** Null when not known yet; they can't be invited until it's added. */
+  email: string | null;
   hireDate: string | null;
   status: "active" | "leave" | "departed" | "not_applicable";
   type: (typeof PERSON_TYPES)[number];
+  /** For a company: the person who signs in for it. */
+  contactName: string | null;
 }
 
 export interface RowError {
@@ -29,9 +32,10 @@ const EMAIL = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 const norm = (h: string) => h.trim().toLowerCase().replace(/[\s-]+/g, "_");
 
 /**
- * Parse a people CSV with columns name, email, hire_date, status, type (any order, header row
- * required). Dates must be YYYY-MM-DD so day and month can't be confused. Every problem is
- * reported with its line number; nothing is partially accepted.
+ * Parse a people CSV with columns name, email, hire_date, status, type and optionally
+ * contact_name (any order, header row required; commas or tabs, so rows pasted from a
+ * spreadsheet work). Email and hire date may be blank when not known yet. Dates must be
+ * YYYY-MM-DD. Every problem is reported with its line number; nothing is partially accepted.
  */
 export function parsePeopleCsv(text: string): ParsedImport {
   const parsed = Papa.parse<Record<string, string>>(text.replace(/^﻿/, ""), {
@@ -45,7 +49,8 @@ export function parsePeopleCsv(text: string): ParsedImport {
   if (missing.length) return { rows: [], errors: [{ line: 1, message: `Missing column(s): ${missing.join(", ")}` }] };
 
   const rows: PersonRow[] = [];
-  const seen = new Map<string, number>();
+  const seenEmail = new Map<string, number>();
+  const seenName = new Map<string, number>();
   parsed.data.forEach((raw, i) => {
     const line = i + 2;
     const name = (raw.name ?? "").trim();
@@ -53,20 +58,25 @@ export function parsePeopleCsv(text: string): ParsedImport {
     const hire = (raw.hire_date ?? "").trim();
     const type = norm(raw.type ?? "") as PersonRow["type"];
     const status = norm(raw.status ?? "");
+    const contact = (raw.contact_name ?? "").trim();
     const problems: string[] = [];
 
     if (!name) problems.push("name is empty");
-    if (!EMAIL.test(email)) problems.push(`"${raw.email ?? ""}" is not a valid email`);
-    if (!PERSON_TYPES.includes(type)) problems.push(`type must be employee or outside_investor, not "${raw.type ?? ""}"`);
-    if (type === "employee") {
-      if (!isValidDate(hire)) problems.push(`hire_date must be YYYY-MM-DD, not "${hire}"`);
-      if (!(STATUSES as readonly string[]).includes(status)) problems.push(`status must be active, leave or departed, not "${raw.status ?? ""}"`);
-    } else if (hire && !isValidDate(hire)) {
-      problems.push(`hire_date must be YYYY-MM-DD or empty, not "${hire}"`);
+    if (email && !EMAIL.test(email)) problems.push(`"${raw.email ?? ""}" is not a valid email`);
+    if (!PERSON_TYPES.includes(type)) problems.push(`type must be employee, outside_investor or company, not "${raw.type ?? ""}"`);
+    if (hire && !isValidDate(hire)) problems.push(`hire_date must be YYYY-MM-DD or empty, not "${hire}"`);
+    if (type === "employee" && status && !(STATUSES as readonly string[]).includes(status)) {
+      problems.push(`status must be active, leave or departed, not "${raw.status ?? ""}"`);
     }
-    const prev = seen.get(email);
-    if (email && prev) problems.push(`email also appears on line ${prev}`);
-    seen.set(email, line);
+    if (email) {
+      const prev = seenEmail.get(email);
+      if (prev) problems.push(`email also appears on line ${prev}`);
+      seenEmail.set(email, line);
+    } else if (name) {
+      const prev = seenName.get(name.toLowerCase());
+      if (prev) problems.push(`name also appears on line ${prev} (without an email, people are matched by name)`);
+      seenName.set(name.toLowerCase(), line);
+    }
 
     if (problems.length) {
       errors.push({ line, message: problems.join("; ") });
@@ -75,10 +85,11 @@ export function parsePeopleCsv(text: string): ParsedImport {
     rows.push({
       line,
       name,
-      email,
+      email: email || null,
       hireDate: hire || null,
-      status: type === "employee" ? (status as PersonRow["status"]) : "not_applicable",
+      status: type === "employee" ? ((status || "active") as PersonRow["status"]) : "not_applicable",
       type,
+      contactName: type === "company" ? contact || null : null,
     });
   });
   return { rows, errors };

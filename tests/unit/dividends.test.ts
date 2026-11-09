@@ -40,15 +40,16 @@ describe("allocateByShares (total amount)", () => {
 });
 
 describe("allocatePerShare", () => {
-  it("pays the same amount on every share", () => {
-    const r = allocatePerShare(35n, [h("A", 100n), h("B", 3n)]);
-    expect(r.map((x) => x.amountCents)).toEqual([3500n, 105n]);
+  it("pays the same amount on every whole share, rounding fractions to the cent", () => {
+    // 100 shares and 3 shares at $0.35; 26.05 shares at $0.35 = $9.1175 → $9.12
+    const r = allocatePerShare(35n, [h("A", 10_000n), h("B", 300n), h("C", 2605n)]);
+    expect(r.map((x) => x.amountCents)).toEqual([3500n, 105n, 912n]);
   });
 });
 
 describe("perShareRate", () => {
   it("expresses total ÷ shares in hundredths of a cent, rounded down", () => {
-    expect(perShareRate(10_000n, 3n)).toBe(333_333n);
+    expect(perShareRate(10_000n, 300n)).toBe(333_333n); // $100.00 over 3 whole shares
     expect(formatPerShareRate(333_333n)).toBe("$33.3333");
     expect(formatPerShareRate(3_500n)).toBe("$0.3500");
   });

@@ -1,18 +1,19 @@
 "use server";
 import { revalidatePath } from "next/cache";
 import { adminContext, requireAdmin } from "@/lib/auth/guards";
-import { isValidDate, parseDollarsToCents } from "@/lib/calc";
 import { decryptField, parseKey } from "@/lib/crypto/fields";
 import {
   ensureSystemHolders,
+  getSystemHolderIds,
   importPeople,
   logReveal,
-  recordOpeningBalance,
   reverseShareEntry,
   setAdminRole,
   type ImportResult,
 } from "@/lib/data/admin";
 import { env } from "@/lib/env";
+import { recordMovement } from "@/lib/data/transfers";
+import { movementError, parseMovementForm } from "@/lib/forms/movement";
 import { createInvite } from "@/lib/invites";
 import { parsePeopleCsv, type ParsedImport } from "@/lib/people/csv";
 
@@ -72,24 +73,16 @@ export async function ensureSystemHoldersAction(): Promise<void> {
 
 export async function openingBalanceAction(_prev: FormState, form: FormData): Promise<FormState> {
   const viewer = await requireAdmin();
-  const holderId = String(form.get("holderId") ?? "");
-  const sharesRaw = String(form.get("shares") ?? "").replaceAll(",", "").trim();
-  const entryDate = String(form.get("entryDate") ?? "");
-  const memo = String(form.get("memo") ?? "").trim() || null;
-  if (!holderId) return { error: "Choose a holder." };
-  if (!/^\d+$/.test(sharesRaw) || BigInt(sharesRaw) <= 0n) return { error: "Shares must be a whole number above zero." };
-  if (!isValidDate(entryDate)) return { error: "Enter the date as YYYY-MM-DD." };
-  let priceCents: bigint;
+  const ctx = adminContext(viewer);
+  const { opening } = await getSystemHolderIds(ctx);
+  if (!opening) return { error: "Create the system holders first." };
+  form.set("fromId", opening);
+  const m = parseMovementForm(form);
+  if (typeof m === "string") return { error: m };
   try {
-    priceCents = parseDollarsToCents(String(form.get("price") ?? ""));
-  } catch {
-    return { error: "Enter the price per share in dollars, like 12.50." };
-  }
-  if (priceCents < 0n) return { error: "Price can't be negative." };
-  try {
-    await recordOpeningBalance(adminContext(viewer), { holderId, shares: BigInt(sharesRaw), priceCents, entryDate, memo });
+    await recordMovement(ctx, m);
   } catch (e) {
-    return { error: friendly(e) };
+    return { error: movementError(e) };
   }
   revalidatePath("/admin/holders");
   return { ok: "Opening balance recorded." };
