@@ -1,12 +1,12 @@
-import { floorDiv, type Cents, type Shares } from "./money";
+import { floorDiv, roundDiv, SHARE_UNITS, type Cents, type Shares } from "./money";
 
 export interface ValuationInputs {
   ebitdaCents: Cents;
   debtCents: Cents;
   /** Valuation multiple × 100, so 7× is 700n and 6.5× is 650n. */
   multipleX100: bigint;
-  /** Total shares outstanding across all classes. */
-  sharesOutstanding: Shares;
+  /** Total shares outstanding, in WHOLE shares (the price-formula denominator). */
+  sharesOutstanding: bigint;
 }
 
 /**
@@ -22,7 +22,7 @@ export function pricePerShareCents(v: ValuationInputs): Cents {
   return floorDiv(equityX100, 100n * v.sharesOutstanding);
 }
 
-/** Market value of a holding: shares × price per share. */
+/** Value of a holding: shares × price per share, rounded to the nearest cent. */
 export function valueCents(shares: Shares, priceCents: Cents): Cents {
-  return shares * priceCents;
+  return roundDiv(shares * priceCents, SHARE_UNITS);
 }

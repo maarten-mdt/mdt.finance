@@ -6,17 +6,24 @@ import {
   eligibilityDate,
   holdingsFromLedger,
   isEligible,
+  formatShares,
   parseDollarsToCents,
+  parseShares,
   pricePerShareCents,
+  roundDiv,
   valueCents,
   type LedgerEntry,
 } from "@/lib/calc";
 
+// Test entries are written in WHOLE shares for readability; the ledger stores hundredths, and the
+// amount paid defaults to shares × price.
 const e = (p: Partial<LedgerEntry> & Pick<LedgerEntry, "id" | "from" | "to" | "shares">): LedgerEntry => ({
   date: "2026-07-01",
   priceCents: 0n,
   reversesId: null,
   ...p,
+  shares: p.shares * 100n,
+  amountCents: p.amountCents ?? p.shares * (p.priceCents ?? 0n),
 });
 
 describe("pricePerShareCents", () => {
@@ -66,10 +73,10 @@ describe("holdingsFromLedger", () => {
 
   it("computes every holder's balance as inflows minus outflows", () => {
     const h = holdingsFromLedger(ledger);
-    expect(h.get("VRH")).toBe(850n);
-    expect(h.get("A")).toBe(90n);
-    expect(h.get("B")).toBe(60n);
-    expect(h.get("OPEN")).toBe(-1000n);
+    expect(h.get("VRH")).toBe(85_000n);
+    expect(h.get("A")).toBe(9_000n);
+    expect(h.get("B")).toBe(6_000n);
+    expect(h.get("OPEN")).toBe(-100_000n);
   });
 
   it("conserves shares: all balances sum to zero", () => {
@@ -84,11 +91,44 @@ describe("holdingsFromLedger", () => {
 
 describe("valueCents", () => {
   it("is shares × price", () => {
-    expect(valueCents(90n, 6500n)).toBe(585_000n);
+    expect(valueCents(9_000n, 6500n)).toBe(585_000n);
+  });
+
+  it("rounds fractional holdings to the nearest cent", () => {
+    // 26.05 shares × $959.72 = $25,000.706 → $25,000.71
+    expect(valueCents(2605n, 95_972n)).toBe(2_500_071n);
+  });
+});
+
+describe("two-decimal shares", () => {
+  it("parses share quantities into hundredths", () => {
+    expect(parseShares("75,106.22")).toBe(7_510_622n);
+    expect(parseShares("26.05")).toBe(2605n);
+    expect(parseShares("26.5")).toBe(2650n);
+    expect(parseShares("399")).toBe(39_900n);
+    for (const bad of ["", "1.234", "-5", "abc", "1,00"]) expect(() => parseShares(bad)).toThrow();
+  });
+
+  it("formats hundredths, dropping .00 on whole quantities", () => {
+    expect(formatShares(7_510_622n)).toBe("75,106.22");
+    expect(formatShares(2605n)).toBe("26.05");
+    expect(formatShares(39_900n)).toBe("399");
+    expect(formatShares(-2605n)).toBe("−26.05");
+  });
+
+  it("rounds half away from zero", () => {
+    expect(roundDiv(5n, 2n)).toBe(3n);
+    expect(roundDiv(-5n, 2n)).toBe(-3n);
+    expect(roundDiv(4n, 3n)).toBe(1n);
   });
 });
 
 describe("costBasisCents (average cost)", () => {
+  it("uses the amount actually paid, not shares × price", () => {
+    const l = [e({ id: "1", from: "VRH", to: "A", shares: 26n, priceCents: 95_972n, amountCents: 2_500_000n })];
+    expect(costBasisCents(l, "A")).toBe(2_500_000n);
+  });
+
   it("sums acquisitions at their price", () => {
     const l = [
       e({ id: "1", from: "VRH", to: "A", shares: 100n, priceCents: 1000n }),
@@ -124,7 +164,7 @@ describe("costBasisCents (average cost)", () => {
       e({ id: "3", from: "A", to: "VRH", shares: 999n, priceCents: 1000n, reversesId: "2" }),
     ];
     expect(costBasisCents(l, "A")).toBe(100_000n);
-    expect(balanceOf(l, "A")).toBe(100n);
+    expect(balanceOf(l, "A")).toBe(10_000n);
   });
 });
 

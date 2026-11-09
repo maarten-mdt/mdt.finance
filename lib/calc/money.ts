@@ -1,9 +1,24 @@
 /**
- * Money is always integer cents as bigint. Share counts are always whole shares as bigint.
+ * Money is always integer cents as bigint. Share quantities are integer hundredths of a share
+ * as bigint (26.05 shares = 2605n), because MDT's records hold shares to two decimals.
  * Nothing in this module uses floating-point numbers.
  */
 export type Cents = bigint;
+/** Hundredths of a share. */
 export type Shares = bigint;
+
+/** Hundredths per whole share. */
+export const SHARE_UNITS = 100n;
+
+/** Integer division rounding half away from zero (12.5 → 13, −12.5 → −13). */
+export function roundDiv(a: bigint, b: bigint): bigint {
+  if (b === 0n) throw new RangeError("division by zero");
+  const neg = a < 0n !== b < 0n;
+  const aa = a < 0n ? -a : a;
+  const bb = b < 0n ? -b : b;
+  const q = (2n * aa + bb) / (2n * bb);
+  return neg ? -q : q;
+}
 
 /** Integer division rounding toward negative infinity (bigint `/` truncates toward zero). */
 export function floorDiv(a: bigint, b: bigint): bigint {
@@ -38,6 +53,20 @@ export function formatCents(cents: Cents): string {
   return `${neg ? "−" : ""}$${whole}.${frac}`;
 }
 
-export function formatShares(shares: Shares): string {
-  return (shares < 0n ? "−" : "") + groupThousands((shares < 0n ? -shares : shares).toString());
+/** 750_6122n → "75,106.22"; whole quantities print without decimals: 39_900n → "399". */
+export function formatShares(units: Shares): string {
+  const neg = units < 0n;
+  const abs = neg ? -units : units;
+  const whole = groupThousands((abs / SHARE_UNITS).toString());
+  const frac = abs % SHARE_UNITS;
+  return `${neg ? "−" : ""}${whole}${frac === 0n ? "" : `.${frac.toString().padStart(2, "0")}`}`;
+}
+
+const SHARES = /^(\d{1,3}(?:,\d{3})+|\d+)(?:\.(\d{1,2}))?$/;
+
+/** Parse "75,106.22" / "26.05" / "399" into hundredths of a share. Throws on anything else. */
+export function parseShares(input: string): Shares {
+  const m = SHARES.exec(input.trim());
+  if (!m) throw new Error(`Not a valid number of shares: "${input}"`);
+  return BigInt((m[1] ?? "").replaceAll(",", "")) * SHARE_UNITS + BigInt((m[2] ?? "").padEnd(2, "0") || "0");
 }
