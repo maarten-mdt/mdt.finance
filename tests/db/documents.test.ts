@@ -86,8 +86,8 @@ describe("holdings_at", () => {
     const opening = await addPerson(db, { name: "Opening", type: "system", key: "opening_balance" });
     const vrh = await addPerson(db, { name: "VRH", type: "entity", key: "vrh" });
     await db.owner.query(
-      `INSERT INTO share_ledger (entry_date, type, from_holder_id, to_holder_id, shares, price_cents) VALUES
-         ('2026-01-01','opening_balance',$1,$2,1000,0), ('2026-07-01','vrh_sale',$2,$3,100,2590)`,
+      `INSERT INTO share_ledger (entry_date, type, from_holder_id, to_holder_id, shares, price_cents, amount_cents) VALUES
+         ('2026-01-01','opening_balance',$1,$2,1000,0,0), ('2026-07-01','vrh_sale',$2,$3,100,2590,2590)`,
       [opening, vrh, alice],
     );
     const before = await db.as({ personId: admin, isAdmin: true }, (c) =>

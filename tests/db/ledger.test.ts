@@ -13,11 +13,12 @@ const insertShare = (
   shares: number,
   price = 5000,
   reverses: string | null = null,
+  amount?: number,
 ) =>
   c.query(
-    `INSERT INTO share_ledger (entry_date, type, from_holder_id, to_holder_id, shares, price_cents, reverses_entry_id)
-     VALUES ('2026-07-01', $1, $2, $3, $4, $5, $6) RETURNING id`,
-    [type, from, to, shares, price, reverses],
+    `INSERT INTO share_ledger (entry_date, type, from_holder_id, to_holder_id, shares, price_cents, amount_cents, reverses_entry_id)
+     VALUES ('2026-07-01', $1, $2, $3, $4, $5, $6, $7) RETURNING id`,
+    [type, from, to, shares, price, amount ?? Math.round((shares * price) / 100), reverses],
   );
 
 beforeAll(async () => {
@@ -85,6 +86,12 @@ describe("share movement rules", () => {
     const id = (await insertShare(db.owner, "vrh_sale", vrh, bob, 50)).rows[0]!.id as string;
     await expect(insertShare(db.owner, "correction", bob, vrh, 49, 5000, id)).rejects.toThrow(/exactly reverse/);
     await expect(insertShare(db.owner, "correction", vrh, bob, 50, 5000, id)).rejects.toThrow(/exactly reverse/);
+  });
+
+  it("a correction must also mirror the amount paid", async () => {
+    const id = (await insertShare(db.owner, "vrh_sale", vrh, bob, 10, 5000, null, 777)).rows[0]!.id as string;
+    await expect(insertShare(db.owner, "correction", bob, vrh, 10, 5000, id, 500)).rejects.toThrow(/exactly reverse/);
+    await insertShare(db.owner, "correction", bob, vrh, 10, 5000, id, 777);
   });
 
   it("nobody can transfer more shares than they hold", async () => {

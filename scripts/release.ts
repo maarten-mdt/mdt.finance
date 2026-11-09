@@ -63,7 +63,7 @@ async function main() {
     if (process.env.RECOVER_ACCOUNT) await recoverAccount(c, process.env.RECOVER_ACCOUNT);
 
     if (process.env.SEED_ON_DEPLOY === "true" && !isProd) {
-      const seeded = await c.query("SELECT 1 FROM people WHERE system_key = 'vrh'");
+      const seeded = await c.query("SELECT 1 FROM share_ledger LIMIT 1");
       // A fresh database gets the full seed; an existing one only gets any missing history.
       execFileSync("npx", ["tsx", "scripts/seed.ts", ...(seeded.rowCount ? ["--history"] : [])], { stdio: "inherit", env: process.env });
     }

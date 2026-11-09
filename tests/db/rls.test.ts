@@ -14,10 +14,10 @@ beforeAll(async () => {
   await db.owner.query("INSERT INTO user_roles (person_id, role) VALUES ($1, 'admin')", [admin]);
 
   await db.owner.query(
-    `INSERT INTO share_ledger (entry_date, type, from_holder_id, to_holder_id, shares, price_cents) VALUES
-       ('2026-01-01', 'opening_balance', $1, $2, 100000, 1000),
-       ('2026-07-01', 'vrh_sale', $2, $3, 100, 5000),
-       ('2026-07-01', 'vrh_sale', $2, $4, 250, 5000)`,
+    `INSERT INTO share_ledger (entry_date, type, from_holder_id, to_holder_id, shares, price_cents, amount_cents) VALUES
+       ('2026-01-01', 'opening_balance', $1, $2, 100000, 1000, 0),
+       ('2026-07-01', 'vrh_sale', $2, $3, 100, 5000, 5000),
+       ('2026-07-01', 'vrh_sale', $2, $4, 250, 5000, 12500)`,
     [opening, vrh, alice, bob],
   );
   await db.owner.query(
@@ -92,7 +92,7 @@ describe("row-level security: holder A cannot read holder B", () => {
     await expect(
       db.as({ personId: alice }, (c) =>
         c.query(
-          "INSERT INTO share_ledger (entry_date, type, from_holder_id, to_holder_id, shares, price_cents) VALUES ('2026-08-01','vrh_sale',$1,$2,1,1)",
+          "INSERT INTO share_ledger (entry_date, type, from_holder_id, to_holder_id, shares, price_cents, amount_cents) VALUES ('2026-08-01','vrh_sale',$1,$2,1,1,1)",
           [vrh, alice],
         ),
       ),
