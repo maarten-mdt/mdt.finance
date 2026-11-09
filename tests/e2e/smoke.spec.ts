@@ -25,8 +25,9 @@ test("invited holder sets up MFA, sees only their dashboard, and signs back in w
   };
 
   // 0. The site has no public face: the home page is a bare sign-in page that says nothing about what's behind it.
-  await page.goto("/");
-  await expect(page).toHaveURL(/\/login$/);
+  const home = await page.goto("/");
+  expect(home?.status()).toBe(200); // Railway's health check requests "/" and needs a 200
+  await expect(page.getByRole("button", { name: "Continue" })).toBeVisible();
   await expect(page.getByRole("heading", { name: "Sign in" })).toBeVisible();
   const visible = (await page.locator("body").innerText()).toLowerCase();
   for (const word of ["share", "portal", "admin", "dividend", "invest", "launching"]) expect(visible).not.toContain(word);
