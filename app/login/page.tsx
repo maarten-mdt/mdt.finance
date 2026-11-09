@@ -12,7 +12,7 @@ export default async function LoginPage({ searchParams }: { searchParams: Promis
   const { reason, next } = await searchParams;
   const safeNext = next && next.startsWith("/") && !next.startsWith("//") ? next : "/dashboard";
   return (
-    <AuthShell title="Sign in" subtitle="MDT shareholder portal">
+    <AuthShell title="Sign in">
       <LoginForm notice={reason ? reasons[reason] : undefined} next={safeNext} />
     </AuthShell>
   );
