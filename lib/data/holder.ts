@@ -34,6 +34,8 @@ export interface Movement {
 
 export interface Dashboard {
   name: string;
+  /** For a company holder, the person who signs in for it. */
+  greetingName: string;
   type: string;
   shares: Shares;
   priceCents: Cents | null;
@@ -64,8 +66,8 @@ const COUNTERPARTY = "counterparty";
 export async function getDashboard(ctx: DbContext, today: string): Promise<Dashboard | null> {
   return withContext(ctx, async (tx) => {
     const person = (
-      await tx.query<{ name: string; type: string; hire_date: string | null; status: string }>(
-        "SELECT name, type, hire_date, status FROM people WHERE id = app.current_person_id()",
+      await tx.query<{ name: string; type: string; hire_date: string | null; status: string; contact_name: string | null }>(
+        "SELECT name, type, hire_date, status, contact_name FROM people WHERE id = app.current_person_id()",
       )
     ).rows[0];
     if (!person) return null;
@@ -78,9 +80,10 @@ export async function getDashboard(ctx: DbContext, today: string): Promise<Dashb
         direction: "in" | "out";
         shares: string;
         price_cents: string;
+        amount_cents: string;
         reverses_entry_id: string | null;
       }>(
-        "SELECT id::text, entry_date, type, direction, shares::text, price_cents::text, reverses_entry_id::text FROM app.my_share_entries()",
+        "SELECT id::text, entry_date, type, direction, shares::text, price_cents::text, amount_cents::text, reverses_entry_id::text FROM app.my_share_entries()",
       )
     ).rows;
 
@@ -92,6 +95,7 @@ export async function getDashboard(ctx: DbContext, today: string): Promise<Dashb
       to: e.direction === "in" ? SELF : COUNTERPARTY,
       shares: BigInt(e.shares),
       priceCents: BigInt(e.price_cents),
+      amountCents: BigInt(e.amount_cents),
       reversesId: e.reverses_entry_id,
     }));
     const kindById = new Map(rows.map((r) => [r.id, r.type]));
@@ -102,7 +106,7 @@ export async function getDashboard(ctx: DbContext, today: string): Promise<Dashb
       direction: l.to === SELF ? "in" : "out",
       shares: l.shares,
       priceCents: l.priceCents,
-      amountCents: valueCents(l.shares, l.priceCents),
+      amountCents: l.amountCents,
     }));
     const shares = BigInt((await tx.query<{ b: string }>("SELECT app.my_share_balance()::text AS b")).rows[0]!.b);
 
@@ -140,7 +144,7 @@ export async function getDashboard(ctx: DbContext, today: string): Promise<Dashb
     const live = withoutReversed(ledger);
     const firstPurchase = live.filter((l) => l.to === SELF).map((l) => l.date).sort()[0] ?? null;
     const flows: CashFlow[] = [
-      ...live.map((l) => ({ date: l.date, amountCents: (l.to === SELF ? -1n : 1n) * valueCents(l.shares, l.priceCents) })),
+      ...live.map((l) => ({ date: l.date, amountCents: (l.to === SELF ? -1n : 1n) * l.amountCents })),
       ...creditRows
         .filter((r) => r.type === "dividend" && !reversedCredit.has(r.id) && r.reverses_entry_id === null)
         .map((r) => ({ date: r.entry_date, amountCents: BigInt(r.amount_cents) })),
@@ -151,6 +155,7 @@ export async function getDashboard(ctx: DbContext, today: string): Promise<Dashb
 
     return {
       name: person.name,
+      greetingName: person.contact_name ?? person.name,
       type: person.type,
       shares,
       priceCents: latest?.priceCents ?? null,

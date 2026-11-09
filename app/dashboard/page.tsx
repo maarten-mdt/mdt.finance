@@ -96,7 +96,8 @@ export default async function DashboardPage() {
     <>
       <AppHeader name={d.name} isAdmin={viewer.isAdmin} area="holder" />
       <main className="mx-auto max-w-5xl space-y-4 px-4 py-6">
-        <h1 className="text-xl font-bold tracking-tight">Hi {d.name.split(" ")[0]}</h1>
+        <h1 className="text-xl font-bold tracking-tight">Hi {d.greetingName.split(" ")[0]}</h1>
+        {d.greetingName !== d.name && <p className="-mt-3 text-sm text-muted">Shares held by {d.name}</p>}
 
         {d.eligibleOn && (
           <Card className="border-accent/40 bg-accent/5">

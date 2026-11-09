@@ -34,7 +34,8 @@ export default async function ValuationsPage() {
               ebitda: dollarsInput(r.ebitdaCents),
               debt: dollarsInput(r.debtCents),
               multiple: multipleInput(r.multipleX100 ?? defaults.multipleX100),
-              shares: formatShares(r.sharesOutstanding ?? defaults.sharesOutstanding),
+              // Whole shares here; formatShares takes hundredths.
+              shares: formatShares((r.sharesOutstanding ?? defaults.sharesOutstanding) * 100n),
             }}
             dividends={r.dividendCount ? `${r.dividendCount} declared, ${formatCents(r.dividendTotalCents)} total` : null}
           />

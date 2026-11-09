@@ -19,7 +19,7 @@ export function OpeningBalanceForm({ holders }: { holders: { id: string; label: 
       )}
       <label className="block sm:col-span-2">
         <span className="text-sm font-medium">Holder</span>
-        <select name="holderId" required className="mt-1 block w-full rounded-lg border border-line bg-white px-3 py-3 text-base">
+        <select name="toId" required className="mt-1 block w-full rounded-lg border border-line bg-white px-3 py-3 text-base">
           <option value="">Choose…</option>
           {holders.map((h) => (
             <option key={h.id} value={h.id}>
@@ -28,9 +28,10 @@ export function OpeningBalanceForm({ holders }: { holders: { id: string; label: 
           ))}
         </select>
       </label>
-      <Field label="Shares" name="shares" inputMode="numeric" pattern="[0-9,]+" required />
-      <Field label="Price per share ($)" name="price" inputMode="decimal" placeholder="12.50" required />
-      <Field label="Date acquired" name="entryDate" type="date" required />
+      <Field label="Shares" name="shares" inputMode="decimal" placeholder="1,052.00" required hint="Up to two decimals." />
+      <Field label="Price per share ($)" name="price" inputMode="decimal" placeholder="0.00" required />
+      <Field label="Total paid ($, optional)" name="amount" inputMode="decimal" hint="Leave blank to use shares × price." />
+      <Field label="Date acquired" name="date" type="date" required />
       <Field label="Note (optional)" name="memo" maxLength={200} />
       <div className="sm:col-span-2">
         <Button type="submit" disabled={pending}>

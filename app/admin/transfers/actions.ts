@@ -1,9 +1,10 @@
 "use server";
 import { revalidatePath } from "next/cache";
 import { adminContext, requireAdmin } from "@/lib/auth/guards";
-import { formatCents, formatShares, isValidDate, parseDollarsToCents } from "@/lib/calc";
+import { formatCents, formatShares } from "@/lib/calc";
 import { reverseShareEntry } from "@/lib/data/admin";
-import { recordTransfer } from "@/lib/data/transfers";
+import { recordMovement } from "@/lib/data/transfers";
+import { movementError, parseMovementForm } from "@/lib/forms/movement";
 
 export interface TransferState {
   ok?: string;
@@ -12,32 +13,16 @@ export interface TransferState {
 
 export async function transferAction(_prev: TransferState, form: FormData): Promise<TransferState> {
   const viewer = await requireAdmin();
-  const sellerId = String(form.get("sellerId") ?? "");
-  const buyerId = String(form.get("buyerId") ?? "");
-  const sharesRaw = String(form.get("shares") ?? "").replaceAll(",", "").trim();
-  const date = String(form.get("date") ?? "");
-  const memo = String(form.get("memo") ?? "").trim() || null;
-  if (!sellerId || !buyerId) return { error: "Choose a seller and a buyer." };
-  if (sellerId === buyerId) return { error: "The seller and buyer must be different." };
-  if (!/^\d+$/.test(sharesRaw) || BigInt(sharesRaw) <= 0n) return { error: "Shares must be a whole number above zero." };
-  if (!isValidDate(date)) return { error: "Enter the date of the sale." };
-  let priceCents: bigint;
+  const m = parseMovementForm(form);
+  if (typeof m === "string") return { error: m };
   try {
-    priceCents = parseDollarsToCents(String(form.get("price") ?? ""));
-  } catch {
-    return { error: "Enter the price per share in dollars, like 25.90." };
-  }
-  if (priceCents <= 0n) return { error: "The price must be more than zero." };
-  const shares = BigInt(sharesRaw);
-  try {
-    await recordTransfer(adminContext(viewer), { sellerId, buyerId, shares, priceCents, date, memo });
+    await recordMovement(adminContext(viewer), m);
   } catch (e) {
-    const msg = e instanceof Error ? e.message : String(e);
-    return { error: /cannot transfer/.test(msg) ? `The seller doesn't have ${formatShares(shares)} shares.` : msg };
+    return { error: movementError(e) };
   }
   revalidatePath("/admin/transfers");
   revalidatePath("/admin");
-  return { ok: `Recorded: ${formatShares(shares)} shares at ${formatCents(priceCents)} (${formatCents(shares * priceCents)}).` };
+  return { ok: `Recorded: ${formatShares(m.shares)} shares at ${formatCents(m.priceCents)} each, ${formatCents(m.amountCents)} in total.` };
 }
 
 export async function reverseTransferAction(form: FormData): Promise<void> {
