@@ -11,6 +11,7 @@ const nav = [
   { href: "/admin/dividends", label: "Dividends" },
   { href: "/admin/agreements", label: "Agreements" },
   { href: "/admin/holders", label: "VRH & opening balances" },
+  { href: "/admin/settings", label: "Settings" },
   { href: "/admin/audit", label: "Audit log" },
 ];
 
