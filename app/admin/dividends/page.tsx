@@ -6,10 +6,13 @@ import { listDividends } from "@/lib/data/dividends";
 import { todayInVancouver } from "@/lib/data/holder";
 import { DeclareForm } from "./declare-form";
 
-export default async function DividendsPage() {
+export default async function DividendsPage({ searchParams }: { searchParams: Promise<{ year?: string }> }) {
   const viewer = await requireAdmin();
   const dividends = await listDividends(adminContext(viewer));
   const today = todayInVancouver();
+  const { year } = await searchParams;
+  // From the valuations page: default the dates to the end of that year (never in the future).
+  const defaultDate = year && /^\d{4}$/.test(year) && `${year}-12-31` < today ? `${year}-12-31` : today;
 
   return (
     <div className="space-y-6">
@@ -23,7 +26,7 @@ export default async function DividendsPage() {
 
       <Card className="space-y-3">
         <h2 className="font-semibold">Declare a dividend</h2>
-        <DeclareForm today={today} />
+        <DeclareForm today={defaultDate} />
       </Card>
 
       <Card flush>

@@ -8,6 +8,7 @@ const nav = [
   { href: "/admin", label: "People" },
   { href: "/admin/import", label: "Import" },
   { href: "/admin/transfers", label: "Buy / sell" },
+  { href: "/admin/valuations", label: "Valuations" },
   { href: "/admin/dividends", label: "Dividends" },
   { href: "/admin/agreements", label: "Agreements" },
   { href: "/admin/holders", label: "VRH & opening balances" },

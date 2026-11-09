@@ -8,6 +8,8 @@ import {
   valueCents,
   valueHistory,
   withoutReversed,
+  xirrBps,
+  type CashFlow,
   type Cents,
   type CreditEntry,
   type CreditSummary,
@@ -49,6 +51,10 @@ export interface Dashboard {
   prices: (PricePoint & { year: number })[];
   /** The holder's position at each valuation date. */
   history: ValuePoint[];
+  /** Annualized return (XIRR) in basis points, once they've held shares for a year. */
+  annualizedBps: bigint | null;
+  /** Date of their first purchase. */
+  firstPurchase: string | null;
 }
 
 const SELF = "self";
@@ -107,15 +113,15 @@ export async function getDashboard(ctx: DbContext, today: string): Promise<Dashb
     ).rows.map((c) => ({ year: c.year, date: c.settlement_date, priceCents: BigInt(c.price_per_share_cents) }));
     const latest = prices.at(-1) ?? null;
 
+    const creditRows = (
+      await tx.query<{ id: string; type: CreditType; amount_cents: string; reverses_entry_id: string | null; entry_date: string }>(
+        "SELECT id::text, type, amount_cents::text, reverses_entry_id::text, entry_date FROM credit_ledger WHERE person_id = app.current_person_id()",
+      )
+    ).rows;
     const credit = creditSummary(
-      (
-        await tx.query<{ id: string; type: CreditType; amount_cents: string; reverses_entry_id: string | null }>(
-          "SELECT id::text, type, amount_cents::text, reverses_entry_id::text FROM credit_ledger WHERE person_id = app.current_person_id()",
-        )
-      ).rows.map(
-        (r): CreditEntry => ({ id: r.id, type: r.type, amountCents: BigInt(r.amount_cents), reversesId: r.reverses_entry_id }),
-      ),
+      creditRows.map((r): CreditEntry => ({ id: r.id, type: r.type, amountCents: BigInt(r.amount_cents), reversesId: r.reverses_entry_id })),
     );
+    const reversedCredit = new Set(creditRows.flatMap((r) => (r.reverses_entry_id ? [r.reverses_entry_id] : [])));
 
     const years = (
       await tx.query<{ int_value: string }>("SELECT int_value::text FROM current_settings WHERE key = 'eligibility_years'")
@@ -129,6 +135,19 @@ export async function getDashboard(ctx: DbContext, today: string): Promise<Dashb
       eligible = isEligible(person.hire_date, today, eligibilityYears);
       if (!eligible) eligibleOn = eligibilityDate(person.hire_date, eligibilityYears);
     }
+
+    // Annualized return: purchases out, sales and dividends in, today's value as the final inflow.
+    const live = withoutReversed(ledger);
+    const firstPurchase = live.filter((l) => l.to === SELF).map((l) => l.date).sort()[0] ?? null;
+    const flows: CashFlow[] = [
+      ...live.map((l) => ({ date: l.date, amountCents: (l.to === SELF ? -1n : 1n) * valueCents(l.shares, l.priceCents) })),
+      ...creditRows
+        .filter((r) => r.type === "dividend" && !reversedCredit.has(r.id) && r.reverses_entry_id === null)
+        .map((r) => ({ date: r.entry_date, amountCents: BigInt(r.amount_cents) })),
+      ...(latest && shares > 0n ? [{ date: today, amountCents: valueCents(shares, latest.priceCents) }] : []),
+    ].filter((f) => f.amountCents !== 0n);
+    const heldAYear = firstPurchase !== null && Date.parse(today) - Date.parse(firstPurchase) >= 365 * 86_400_000;
+    const annualizedBps = heldAYear ? xirrBps(flows) : null;
 
     return {
       name: person.name,
@@ -145,6 +164,8 @@ export async function getDashboard(ctx: DbContext, today: string): Promise<Dashb
       movements,
       prices,
       history: valueHistory(ledger, SELF, prices),
+      annualizedBps,
+      firstPurchase,
     };
   });
 }
