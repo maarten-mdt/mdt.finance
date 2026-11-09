@@ -4,3 +4,4 @@ export * from "./price";
 export * from "./ledger";
 export * from "./dates";
 export * from "./history";
+export * from "./dividends";
