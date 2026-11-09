@@ -2,9 +2,9 @@ import type { Metadata, Viewport } from "next";
 import "./globals.css";
 
 export const metadata: Metadata = {
-  title: "MDT Finance",
-  description: "MDT shareholder portal",
-  robots: { index: false, follow: false },
+  title: "Sign in",
+  robots: { index: false, follow: false, nocache: true, googleBot: { index: false, follow: false } },
+  referrer: "no-referrer",
 };
 
 export const viewport: Viewport = { width: "device-width", initialScale: 1 };

@@ -87,7 +87,6 @@ export function LoginForm({ notice, next }: { notice?: string; next: string }) {
         <Button type="button" variant="secondary" className="w-full" onClick={passkey}>
           Sign in with a passkey
         </Button>
-        <p className="mt-2 text-center text-xs text-muted">Administrators sign in with a passkey.</p>
       </div>
     </div>
   );
