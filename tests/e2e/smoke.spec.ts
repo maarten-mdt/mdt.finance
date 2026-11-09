@@ -172,6 +172,13 @@ test("admin: passkey, import, opening balance, admin role, agreements, dividends
   await page.goto("/admin/audit?table=user_roles");
   await expect(page.getByTestId("audit-list")).toContainText("INSERT");
 
+  // ---- Settings: total shares outstanding is preset and can be changed ----
+  await page.goto("/admin/settings");
+  await expect(page.getByTestId("setting-shares_outstanding_total")).toHaveText("100,078 shares");
+  await page.getByTestId("setting-shares_outstanding_total").locator("xpath=ancestor::section").getByLabel("New value").fill("100,100");
+  await page.getByTestId("setting-shares_outstanding_total").locator("xpath=ancestor::section").getByRole("button", { name: "Change" }).click();
+  await expect(page.getByTestId("setting-shares_outstanding_total")).toHaveText("100,100 shares");
+
   // ---- Shareholder agreement: upload, send to the holder ----
   await page.goto("/admin/agreements");
   await page.getByLabel("Version name").fill("v1 test");
