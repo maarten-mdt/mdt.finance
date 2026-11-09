@@ -266,6 +266,12 @@ Build in five phases and dry-run a full fake cycle before July 1, 2027. Save thi
 
 Target: phases 1–2 live by March 2027, so eligible employees can onboard before the first window; phases 3–4 live by April 2027, so you can do a full dry run in May before the first real July 1.
 
+## Decisions since the brief
+
+- **Class A first.** The portal currently holds Class A records (100,078 shares, 9 holders) imported from the share tracker. Other classes (G, H, N) and the new non-voting class can be added later.
+- **Company holders.** A company can hold shares with a named contact person who signs in (Van Ruitenburg Holdings Ltd. → Maarten Van Ruitenburg; 1076844 BC Ltd. → Nathan Neels).
+- **Price denominator.** Total shares outstanding = Class A shares (Settings), matching the tracker's Company Value sheet.
+
 ## Open decisions for Maarten and counsel
 
 The first two are decided: VRH is the seller and the buyer. Close the rest before Phase 3 starts.
@@ -275,7 +281,7 @@ The first two are decided: VRH is the seller and the buyer. Close the rest befor
 - [ ] **Buyback price and timing.** Last July 1 price, paid now, or held to the next July 1? Is there a lower price for someone fired for cause?
 - [ ] **Formula details.** Total debt or net debt (debt minus cash)? Does the share count include every class?
 - [ ] **$10,000 cap.** Per person per year, or per order (allowing several orders)?
-- [ ] **Whole shares only?** Recommended. Leftover cash goes to credit.
+- [x] **Decided (Nov 2026): shares to two decimals.** Existing records hold fractional shares (e.g. 75,106.22), so quantities are stored as exact hundredths. Each ledger entry also records the amount actually paid.
 - [ ] **Unfilled sell requests.** When sell requests exceed demand, does pro rata with carry-forward work for you? Or should VRH buy the excess at the same price?
 - [ ] **Outside investors.** Are they exempt from the departure buyback? Counsel to confirm which securities exemption applies to non-employees and what forms they need.
 - [ ] **US and Ireland staff.** Eligible at launch? Does service at Lone Peak or Leading Edge count toward the 4 years?

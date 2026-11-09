@@ -5,7 +5,7 @@ Employee shareholder portal. The product brief is `SPEC.md` (source: Google Driv
 All hosting, database (Railway Postgres) and file storage live on Railway; do not use Vercel or Supabase. Railway's `railway.json` is deprecated: deploy settings live on the Railway service (see README).
 
 ## Non-negotiable rules
-1. Money is integer cents and shares are whole shares (`bigint`). No floats in money or share math.
+1. Money is integer cents and share quantities are integer hundredths of a share (`bigint`; 26.05 shares = 2605). No floats in money or share math (the XIRR rate is the one float, never used for money). Total shares outstanding (price denominator) stays in whole shares.
 2. `share_ledger` and `credit_ledger` are append-only (triggers). Corrections are reversing entries. Holdings are computed from the ledgers.
 3. VRH is a normal holder record; every share movement is holder → holder.
 4. RLS on every table; holders read only their own rows; all writes go through server code via `withContext`.
