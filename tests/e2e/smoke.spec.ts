@@ -48,6 +48,8 @@ test("invited holder sets up MFA, sees only their dashboard, and signs back in w
   await expect(page).toHaveURL(/\/dashboard/);
   await expect(page.getByTestId("shares")).toHaveText(Number(shares).toLocaleString("en-US"));
   await expect(page.getByText("2026 valuation")).toBeVisible();
+  // Held since 2025: an annualized return is shown.
+  await expect(page.getByTestId("annualized")).toHaveText(/^[+−]?\d+\.\d{2}%$/);
 
   // Cash, charts and share history (seed: dividends, 2021–2026 prices).
   await expect(page.getByTestId("cash-balance")).toHaveText(/^\$[\d,]+\.\d{2}$/);
@@ -178,6 +180,22 @@ test("admin: passkey, import, opening balance, admin role, agreements, dividends
   await page.getByTestId("setting-shares_outstanding_total").locator("xpath=ancestor::section").getByLabel("New value").fill("100,100");
   await page.getByTestId("setting-shares_outstanding_total").locator("xpath=ancestor::section").getByRole("button", { name: "Change" }).click();
   await expect(page.getByTestId("setting-shares_outstanding_total")).toHaveText("100,100 shares");
+
+  // ---- Valuations: enter 2020, see the live price, save, lock ----
+  await page.goto("/admin/valuations");
+  const y2020 = page.getByTestId("valuation-2020");
+  await y2020.getByLabel("Audited EBITDA").fill("2,000,000");
+  await y2020.getByLabel("Debt").fill("3,500,000");
+  await y2020.getByLabel("Total shares (all classes)").fill("1,000,000");
+  await expect(page.getByTestId("price-2020")).toHaveText("$10.50"); // (7 × 2M − 3.5M) ÷ 1M
+  await y2020.getByRole("button", { name: "Save draft" }).click();
+  await expect(y2020.getByText("2020 saved as a draft: $10.50")).toBeVisible();
+  page.once("dialog", (d) => d.accept());
+  await y2020.getByRole("button", { name: "Lock" }).click();
+  await expect(y2020.getByText("2020 locked.")).toBeVisible();
+  await expect(y2020.getByLabel("Audited EBITDA")).toBeDisabled();
+  await expect(page.getByTestId("valuation-2026")).toContainText("Locked");
+  if (process.env.SCREENSHOT_DIR) await page.screenshot({ path: `${process.env.SCREENSHOT_DIR}/valuations.png`, fullPage: true });
 
   // ---- Shareholder agreement: upload, send to the holder ----
   await page.goto("/admin/agreements");
