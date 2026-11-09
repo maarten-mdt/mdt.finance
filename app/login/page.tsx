@@ -8,6 +8,8 @@ const reasons: Record<string, string> = {
   signed_out: "You've been signed out.",
 };
 
+export const dynamic = "force-dynamic";
+
 export default async function LoginPage({ searchParams }: { searchParams: Promise<{ reason?: string; next?: string }> }) {
   const { reason, next } = await searchParams;
   const safeNext = next && next.startsWith("/") && !next.startsWith("//") ? next : "/dashboard";
