@@ -3,6 +3,7 @@ import { Card } from "@/components/ui";
 import { formatShares } from "@/lib/calc";
 import { adminContext, requireAdmin } from "@/lib/auth/guards";
 import { listPeople } from "@/lib/data/admin";
+import { agreementStatusByPerson } from "@/lib/data/documents";
 
 const typeLabel: Record<string, string> = {
   employee: "Employee",
@@ -13,7 +14,7 @@ const typeLabel: Record<string, string> = {
 
 export default async function PeoplePage() {
   const viewer = await requireAdmin();
-  const people = await listPeople(adminContext(viewer));
+  const [people, agreements] = await Promise.all([listPeople(adminContext(viewer)), agreementStatusByPerson(adminContext(viewer))]);
   const holders = people.filter((p) => BigInt(p.shares) > 0n && p.system_key === null).length;
 
   return (
@@ -58,6 +59,7 @@ export default async function PeoplePage() {
               <th className="px-4 py-3">Status</th>
               <th className="px-4 py-3">Hired</th>
               <th className="px-4 py-3">Account</th>
+              <th className="px-4 py-3">Agreement</th>
               <th className="px-4 py-3 text-right">Shares</th>
             </tr>
           </thead>
@@ -76,6 +78,15 @@ export default async function PeoplePage() {
                 <td className="px-4 py-3 text-xs">
                   {p.system_key ? "—" : !p.has_account ? "Not invited" : p.mfa_enabled ? "Active" : "MFA pending"}
                   {p.is_admin && <span className="ml-1 rounded bg-ink px-1 text-[10px] text-white">ADMIN</span>}
+                </td>
+                <td className="px-4 py-3 text-xs">
+                  {(() => {
+                    const a = agreements.get(p.id);
+                    if (p.system_key) return "—";
+                    if (!a) return <span className="text-muted">None</span>;
+                    if (a.status === "complete") return `Signed ${a.signed_on}`;
+                    return a.status === "signed" ? <span className="font-medium text-accent">Needs review</span> : "Sent";
+                  })()}
                 </td>
                 <td className="px-4 py-3 text-right tabular-nums">{formatShares(BigInt(p.shares))}</td>
               </tr>

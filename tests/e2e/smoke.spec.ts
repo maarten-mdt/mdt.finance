@@ -1,9 +1,11 @@
 import { readFileSync } from "node:fs";
-import { expect, test } from "@playwright/test";
+import { devices, expect, test } from "@playwright/test";
 import { generateSync } from "otplib";
 import { STATE_FILE } from "./global-setup";
 
 const PASSWORD = "correct horse battery staple";
+const holder = { secret: "", lastCode: "" };
+const PDF = Buffer.from("%PDF-1.4\n% test agreement\n");
 
 /** A TOTP code that won't roll over mid-request, and differs from the last one used. */
 async function freshCode(secret: string, previous?: string): Promise<string> {
@@ -72,8 +74,11 @@ test("invited holder sets up MFA, sees only their dashboard, and signs back in w
   await page.getByLabel("Email").fill(email);
   await page.getByLabel("Password").fill(PASSWORD);
   await page.getByRole("button", { name: "Continue" }).click();
-  await page.getByLabel("Authenticator code").fill(await freshCode(secret, firstCode));
+  const secondCode = await freshCode(secret, firstCode);
+  await page.getByLabel("Authenticator code").fill(secondCode);
   await page.getByRole("button", { name: "Sign in", exact: true }).click();
+  holder.secret = secret;
+  holder.lastCode = secondCode;
   await expect(page).toHaveURL(/\/dashboard/);
   await expect(page.getByTestId("shares")).toHaveText(Number(shares).toLocaleString("en-US"));
 
@@ -82,8 +87,13 @@ test("invited holder sets up MFA, sees only their dashboard, and signs back in w
   await expect(page.getByText("This link has expired")).toBeVisible();
 });
 
-test("admin must add a passkey, then can import people, record an opening balance and see the audit log", async ({ page }) => {
-  const { adminInvite } = JSON.parse(readFileSync(STATE_FILE, "utf8")) as { adminInvite: string };
+test("admin: passkey, import, opening balance, admin role, agreements, dividends and sales", async ({ page, browser }) => {
+  const { adminInvite, holderId, holderName, email } = JSON.parse(readFileSync(STATE_FILE, "utf8")) as {
+    adminInvite: string;
+    holderId: string;
+    holderName: string;
+    email: string;
+  };
 
   // A virtual passkey device (Chromium's WebAuthn emulation) stands in for Face ID / a security key.
   const cdp = await page.context().newCDPSession(page);
@@ -161,4 +171,76 @@ test("admin must add a passkey, then can import people, record an opening balanc
   await expect(page.getByTestId("audit-list")).toContainText("new.hire@example.com");
   await page.goto("/admin/audit?table=user_roles");
   await expect(page.getByTestId("audit-list")).toContainText("INSERT");
+
+  // ---- Shareholder agreement: upload, send to the holder ----
+  await page.goto("/admin/agreements");
+  await page.getByLabel("Version name").fill("v1 test");
+  await page.locator('input[name="file"]').setInputFiles({ name: "agreement.pdf", mimeType: "application/pdf", buffer: PDF });
+  await page.getByRole("button", { name: "Upload" }).click();
+  await expect(page.getByText("Agreement uploaded.")).toBeVisible();
+  await expect(page.getByTestId("templates")).toContainText("Current");
+
+  await page.goto(`/admin/people/${holderId}`);
+  await page.getByRole("button", { name: "Send agreement to sign" }).click();
+  await expect(page.getByText("Sent. They'll see it")).toBeVisible();
+
+  // ---- Dividend: declare a total, check it adds up, mark all but one paid ----
+  await page.goto("/admin/dividends");
+  await page.getByLabel("Total dividend ($)").fill("10,000.00");
+  await page.getByRole("button", { name: "Calculate" }).click();
+  await expect(page.getByTestId("dividend-preview")).toContainText("Van Ruitenburg Holdings Ltd.");
+  await expect(page.getByTestId("dividend-preview").locator("tfoot")).toContainText("$10,000.00");
+  await page.getByRole("button", { name: "Declare $10,000.00 dividend" }).click();
+  await expect(page).toHaveURL(/\/admin\/dividends\/[0-9a-f-]{36}$/);
+  await expect(page.getByTestId("held-total")).toHaveText("$10,000.00");
+  await page.getByRole("checkbox", { name: `Paid: ${holderName}` }).uncheck(); // keeps it as cash
+  await page.getByRole("button", { name: /^Mark \d+ as paid$/ }).click();
+  await expect(page.getByText(/Marked \d+ payments as paid/)).toBeVisible();
+  await expect(page.getByTestId("allocations")).toContainText("Held as cash");
+  // Whoever is left unpaid starts unticked after a payment run.
+  await expect(page.getByRole("checkbox", { name: `Paid: ${holderName}` })).not.toBeChecked();
+  await expect(page.getByRole("button", { name: "Mark 0 as paid" })).toBeDisabled();
+  if (process.env.SCREENSHOT_DIR) await page.screenshot({ path: `${process.env.SCREENSHOT_DIR}/dividend.png`, fullPage: true });
+
+  // ---- Sale between shareholders ----
+  await page.goto("/admin/transfers");
+  await page.getByLabel("Seller").selectOption(holderId);
+  await page.getByLabel("Buyer").selectOption({ label: "New Hire" });
+  await page.getByLabel("Shares", { exact: true }).fill("5");
+  await page.getByRole("button", { name: "Record sale" }).click();
+  await expect(page.getByText(/Recorded: 5 shares/)).toBeVisible();
+  await expect(page.getByTestId("movements")).toContainText(`${holderName} → New Hire`);
+  await page.getByLabel("Shares", { exact: true }).fill("999999");
+  await page.getByLabel("Seller").selectOption(holderId);
+  await page.getByLabel("Buyer").selectOption({ label: "New Hire" });
+  await page.getByRole("button", { name: "Record sale" }).click();
+  await expect(page.getByText("The seller doesn't have 999,999 shares.")).toBeVisible();
+
+  // ---- The holder signs in elsewhere and returns the signed agreement ----
+  const holderCtx = await browser.newContext({ ...devices["Pixel 7"], baseURL: page.url().replace(/\/admin.*$/, "") });
+  const hp = await holderCtx.newPage();
+  await hp.goto("/login");
+  await hp.getByLabel("Email").fill(email);
+  await hp.getByLabel("Password").fill(PASSWORD);
+  await hp.getByRole("button", { name: "Continue" }).click();
+  await hp.getByLabel("Authenticator code").fill(await freshCode(holder.secret, holder.lastCode));
+  await hp.getByRole("button", { name: "Sign in", exact: true }).click();
+  await expect(hp.getByText("Action needed: sign your shareholder agreement")).toBeVisible();
+  const download = await hp.request.get(await hp.getByRole("link", { name: "Download the agreement" }).getAttribute("href").then((h) => h!));
+  expect(download.headers()["content-type"]).toBe("application/pdf");
+  await hp.locator('input[name="file"]').setInputFiles({ name: "signed.pdf", mimeType: "application/pdf", buffer: PDF });
+  if (process.env.SCREENSHOT_DIR) await hp.screenshot({ path: `${process.env.SCREENSHOT_DIR}/agreement-task.png` });
+  await hp.getByRole("button", { name: "Upload signed agreement" }).click();
+  await expect(hp.getByText("Uploaded. MDT will review it")).toBeVisible();
+
+  // ---- Admin confirms; the holder sees the signed date ----
+  await page.goto(`/admin/people/${holderId}`);
+  await expect(page.getByTestId("agreement-status")).toContainText("needs your review");
+  await page.getByLabel("Date signed").first().fill("2026-11-09");
+  await page.getByRole("button", { name: "Confirm signed agreement" }).click();
+  await expect(page.getByTestId("agreement-status")).toContainText("Signed on 2026-11-09");
+
+  await hp.reload();
+  await expect(hp.getByTestId("agreement-signed")).toContainText("Signed on 2026-11-09");
+  await holderCtx.close();
 });
