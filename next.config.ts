@@ -11,6 +11,8 @@ const securityHeaders = [
 const config: NextConfig = {
   poweredByHeader: false,
   serverExternalPackages: ["pg"],
+  // Agreement PDFs are uploaded through server actions (10 MB limit enforced in lib/data/documents.ts).
+  experimental: { serverActions: { bodySizeLimit: "11mb" } },
   async headers() {
     return [{ source: "/:path*", headers: securityHeaders }];
   },
