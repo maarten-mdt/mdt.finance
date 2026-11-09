@@ -128,6 +128,11 @@ export default async function DashboardPage() {
               <Stat label="Value gain" value={signedCents(gain)} sub={gainPct === null ? undefined : formatBps(gainPct)} />
               <Stat label="Dividends earned" value={formatCents(d.credit.dividendsCents)} sub="All time" />
               <Stat
+                label="Annualized return"
+                value={<span data-testid="annualized">{d.annualizedBps === null ? "—" : `${formatBps(d.annualizedBps)}`}</span>}
+                sub={d.annualizedBps === null ? "Shown after your first year" : "Per year, like a savings rate"}
+              />
+              <Stat
                 label="Total return"
                 value={<span data-testid="total-return">{signedCents(totalReturn!)}</span>}
                 sub={totalPct === null ? "Value gain + dividends" : `${formatBps(totalPct)} · gain + dividends`}
