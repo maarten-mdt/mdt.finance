@@ -11,6 +11,12 @@ ALTER TABLE dividends ADD COLUMN memo text;
 
 ALTER TABLE dividend_allocations ADD COLUMN paid_on date;
 ALTER TABLE dividend_allocations ADD COLUMN payout_entry_id bigint REFERENCES credit_ledger(id);
+-- Link allocations already marked paid (e.g. staging seed data) to their payout entries.
+UPDATE dividend_allocations a
+SET paid_on = c.entry_date, payout_entry_id = c.id
+FROM credit_ledger c
+WHERE a.disposition = 'paid_out' AND c.type = 'payout'
+  AND c.dividend_id = a.dividend_id AND c.person_id = a.person_id;
 ALTER TABLE dividend_allocations ADD CONSTRAINT dividend_allocations_paid_consistent
   CHECK ((disposition = 'paid_out') = (paid_on IS NOT NULL AND payout_entry_id IS NOT NULL));
 

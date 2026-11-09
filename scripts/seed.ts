@@ -199,20 +199,22 @@ async function addHistory(c: Client) {
         // First dividend: every other holder had theirs paid out; the rest is still held as cash.
         const paid = dv.payoutOn !== null && (i + k) % 2 === 0;
         await c.query(
-          `INSERT INTO dividend_allocations (dividend_id, person_id, shares_on_record_date, amount_cents, disposition)
-           VALUES ($1, $2, $3, $4, $5)`,
-          [id, h.holder_id, h.shares, amount.toString(), paid ? "paid_out" : "pending"],
-        );
-        await c.query(
           "INSERT INTO credit_ledger (entry_date, person_id, type, amount_cents, dividend_id) VALUES ($1, $2, 'dividend', $3, $4)",
           [dv.declared, h.holder_id, amount.toString(), id],
         );
-        if (paid) {
-          await c.query(
-            "INSERT INTO credit_ledger (entry_date, person_id, type, amount_cents, dividend_id) VALUES ($1, $2, 'payout', $3, $4)",
-            [dv.payoutOn, h.holder_id, (-amount).toString(), id],
-          );
-        }
+        const payout = paid
+          ? (
+              await c.query<{ id: string }>(
+                "INSERT INTO credit_ledger (entry_date, person_id, type, amount_cents, dividend_id) VALUES ($1, $2, 'payout', $3, $4) RETURNING id::text",
+                [dv.payoutOn, h.holder_id, (-amount).toString(), id],
+              )
+            ).rows[0]!.id
+          : null;
+        await c.query(
+          `INSERT INTO dividend_allocations (dividend_id, person_id, shares_on_record_date, amount_cents, disposition, paid_on, payout_entry_id)
+           VALUES ($1, $2, $3, $4, $5, $6, $7)`,
+          [id, h.holder_id, h.shares, amount.toString(), paid ? "paid_out" : "pending", paid ? dv.payoutOn : null, payout],
+        );
       }
     }
     await c.query("COMMIT");
