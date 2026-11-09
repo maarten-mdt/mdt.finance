@@ -46,4 +46,11 @@ describe("parsePeopleCsv", () => {
     expect(errors).toEqual([]);
     expect(rows).toHaveLength(1);
   });
+
+  it("accepts rows pasted from Excel or Google Sheets (tab-separated)", () => {
+    const pasted = "name\temail\thire_date\tstatus\ttype\nJane Doe\tjane@mdttac.com\t2019-04-01\tactive\temployee\n";
+    const { rows, errors } = parsePeopleCsv(pasted);
+    expect(errors).toEqual([]);
+    expect(rows).toEqual([{ line: 2, name: "Jane Doe", email: "jane@mdttac.com", hireDate: "2019-04-01", status: "active", type: "employee" }]);
+  });
 });

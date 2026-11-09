@@ -1,6 +1,6 @@
 "use client";
 import { useActionState } from "react";
-import { Alert, Button, Card } from "@/components/ui";
+import { Alert, Button, Card, FileField } from "@/components/ui";
 import { returnSignedAction, type ReturnState } from "./actions";
 
 export interface MyAgreement {
@@ -40,7 +40,7 @@ export function AgreementCard({ docs }: { docs: MyAgreement[] }) {
           </ol>
           <form action={action} className="space-y-3">
             <input type="hidden" name="documentId" value={todo.id} />
-            <input type="file" name="file" accept="application/pdf,.pdf" required className="block w-full text-sm" />
+            <FileField label="Your signed copy (PDF)" name="file" accept="application/pdf,.pdf" required />
             <Button type="submit" disabled={pending}>
               {pending ? "Uploading…" : "Upload signed agreement"}
             </Button>

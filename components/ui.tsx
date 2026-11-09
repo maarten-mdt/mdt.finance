@@ -88,3 +88,27 @@ export function Stat({ label, value, sub }: { label: string; value: ReactNode; s
     </div>
   );
 }
+
+/** A file picker with a visible "Choose file" button (the CSS reset hides the browser's own). */
+export function FileField({ label, hint, ...props }: InputHTMLAttributes<HTMLInputElement> & { label: string; hint?: string }) {
+  const id = props.id ?? `file-${props.name ?? "upload"}`;
+  return (
+    <div>
+      <label htmlFor={id} className="text-sm font-medium">
+        {label}
+      </label>
+      <input
+        {...props}
+        id={id}
+        type="file"
+        aria-describedby={hint ? `${id}-hint` : undefined}
+        className="mt-1 block w-full cursor-pointer rounded-lg border border-dashed border-line bg-white p-2 text-sm text-muted file:mr-3 file:cursor-pointer file:rounded-lg file:border-0 file:bg-ink file:px-4 file:py-2 file:text-sm file:font-semibold file:text-white hover:border-ink"
+      />
+      {hint && (
+        <p id={`${id}-hint`} className="mt-1 text-xs text-muted">
+          {hint}
+        </p>
+      )}
+    </div>
+  );
+}

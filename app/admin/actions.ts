@@ -41,7 +41,9 @@ export async function importAction(_prev: ImportState, form: FormData): Promise<
     if (file.size > 1_000_000) return { error: "That file is over 1 MB. Split it up and import in parts." };
     csv = await file.text();
   }
-  if (!csv.trim()) return { error: "Choose a CSV file first." };
+  const pasted = String(form.get("pasted") ?? "");
+  if (!(file instanceof File && file.size > 0) && pasted.trim()) csv = pasted;
+  if (!csv.trim()) return { error: "Upload a CSV file or paste the rows first." };
 
   const preview = parsePeopleCsv(csv);
   if (intent !== "apply") return { csv, preview };

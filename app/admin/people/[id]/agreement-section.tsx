@@ -1,6 +1,6 @@
 "use client";
 import { useActionState } from "react";
-import { Alert, Button, Card, Field } from "@/components/ui";
+import { Alert, Button, Card, Field, FileField } from "@/components/ui";
 import { reviewAction, sendAgreementAction, uploadSignedAction, type DocState } from "../../agreements/actions";
 
 export interface AgreementDoc {
@@ -110,10 +110,9 @@ export function AgreementSection({ personId, docs, today }: { personId: string; 
           <input type="hidden" name="personId" value={personId} />
           <Field label="Version" name="version" placeholder="v1 — March 2027" required />
           <Field label="Date signed" name="signedOn" type="date" defaultValue={today} required />
-          <label className="block sm:col-span-2">
-            <span className="text-sm font-medium">Signed agreement (PDF)</span>
-            <input type="file" name="file" accept="application/pdf,.pdf" required className="mt-1 block w-full text-sm" />
-          </label>
+          <div className="sm:col-span-2">
+            <FileField label="Signed agreement (PDF)" name="file" accept="application/pdf,.pdf" required />
+          </div>
           <div className="sm:col-span-2">
             <Button type="submit" variant="secondary" disabled={uploading}>
               {uploading ? "Uploading…" : "Save signed agreement"}
