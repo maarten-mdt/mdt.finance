@@ -5,6 +5,8 @@ import { adminContext, requireAdmin } from "@/lib/auth/guards";
 import { getSystemHolderIds, listOpeningBalances, listPeople } from "@/lib/data/admin";
 import { ensureSystemHoldersAction, reverseEntryAction } from "../actions";
 import { OpeningBalanceForm } from "./opening-form";
+import { StartOver } from "./start-over";
+import { withContext } from "@/lib/db";
 
 export default async function HoldersPage() {
   const viewer = await requireAdmin();
@@ -28,7 +30,19 @@ export default async function HoldersPage() {
     );
   }
 
-  const [people, entries] = await Promise.all([listPeople(ctx), listOpeningBalances(ctx)]);
+  const [people, allEntries, liveCount] = await Promise.all([
+    listPeople(ctx),
+    listOpeningBalances(ctx),
+    withContext(ctx, (tx) =>
+      tx.query<{ n: number }>(
+        `SELECT count(*)::int AS n FROM share_ledger l WHERE l.type <> 'correction'
+         AND NOT EXISTS (SELECT 1 FROM share_ledger c WHERE c.reverses_entry_id = l.id)`,
+      ),
+    ).then((r) => r.rows[0]!.n),
+  ]);
+  // Reversed opening balances are history, not part of the current picture.
+  const entries = allEntries.filter((e) => !e.reversed_by);
+  const hiddenReversed = allEntries.length - entries.length;
   const vrh = people.find((p) => p.system_key === "vrh")!;
   const opening = people.find((p) => p.system_key === "opening_balance")!;
   const choices = people
@@ -106,6 +120,13 @@ export default async function HoldersPage() {
           </tbody>
         </table>
       </Card>
+      {hiddenReversed > 0 && (
+        <p className="text-xs text-muted">
+          {hiddenReversed} reversed opening balance{hiddenReversed === 1 ? " is" : "s are"} hidden; they remain in each person&apos;s history
+          and the audit log.
+        </p>
+      )}
+      <StartOver live={liveCount} />
       <p className="text-xs text-muted">
         Ledger entries are never edited or deleted. Reversing writes a new correction entry that exactly cancels the original.
       </p>
