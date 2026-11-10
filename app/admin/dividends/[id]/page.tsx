@@ -6,6 +6,7 @@ import { adminContext, requireAdmin } from "@/lib/auth/guards";
 import { getDividend } from "@/lib/data/dividends";
 import { todayInVancouver } from "@/lib/data/holder";
 import { PayoutForm } from "./payout-form";
+import { VoidForm } from "./void-form";
 
 export default async function DividendPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
@@ -50,7 +51,18 @@ export default async function DividendPage({ params }: { params: Promise<{ id: s
         </div>
       </Card>
 
-      <PayoutForm
+      {d.voided_at && (
+        <Card className="border-danger/30 bg-danger/5 text-sm" >
+          <strong>Voided</strong> on {d.voided_at.slice(0, 10)}: {d.void_reason}. Everything it added to cash balances, and any payouts,
+          has been reversed; it no longer counts in anyone&apos;s dividends or returns.
+        </Card>
+      )}
+
+      {d.input_mode === "manual" && !d.voided_at && (
+        <p className="text-xs text-muted">Amounts were entered per person (not calculated from the record date).</p>
+      )}
+
+      {!d.voided_at && <PayoutForm
         dividendId={d.id}
         today={todayInVancouver()}
         rows={allocations.map((a) => ({
@@ -63,7 +75,9 @@ export default async function DividendPage({ params }: { params: Promise<{ id: s
           amount: formatCents(BigInt(a.amount_cents)),
           paidOn: a.disposition === "paid_out" ? a.paid_on : null,
         }))}
-      />
+      />}
+
+      {!d.voided_at && <VoidForm dividendId={d.id} />}
     </div>
   );
 }

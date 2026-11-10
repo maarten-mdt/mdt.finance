@@ -3,14 +3,25 @@ import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { adminContext, requireAdmin } from "@/lib/auth/guards";
 import { formatCents, formatPerShareRate, formatShares, isValidDate, parseDollarsToCents } from "@/lib/calc";
-import { declareDividend, markPaid, previewDividend, type DividendInput } from "@/lib/data/dividends";
+import { declareDividend, markPaid, previewDividend, voidDividend, type DividendInput, type ManualLine } from "@/lib/data/dividends";
+
+export interface PreviewLine {
+  holderId: string;
+  name: string;
+  isVrh: boolean;
+  /** Hundredths of a share on the record date, as a string (for the hidden form field). */
+  sharesUnits: string;
+  shares: string;
+  /** Calculated amount, as plain dollars ("1,234.56") for the editable field. */
+  amount: string;
+}
 
 export interface DeclareState {
   error?: string;
   /** Echo of the form, so the confirm step submits exactly what was previewed. */
   values?: { mode: string; amount: string; recordDate: string; declarationDate: string; memo: string };
   preview?: {
-    lines: { name: string; isVrh: boolean; shares: string; amount: string }[];
+    lines: PreviewLine[];
     totalShares: string;
     total: string;
     rate: string;
@@ -48,6 +59,8 @@ function parse(form: FormData): { input: DividendInput & { declarationDate: stri
   };
 }
 
+const plainDollars = (c: bigint) => formatCents(c).replace("$", "");
+
 export async function declareAction(_prev: DeclareState, form: FormData): Promise<DeclareState> {
   const viewer = await requireAdmin();
   const parsed = parse(form);
@@ -55,9 +68,31 @@ export async function declareAction(_prev: DeclareState, form: FormData): Promis
   const ctx = adminContext(viewer);
 
   if (form.get("intent") === "confirm") {
+    // Per-person amounts as entered on the preview (possibly edited, possibly with added people).
+    const holders = form.getAll("line_holder").map(String);
+    const units = form.getAll("line_shares").map(String);
+    const amounts = form.getAll("line_amount").map(String);
+    let lines: ManualLine[];
+    try {
+      lines = holders.map((h, k) => ({
+        holderId: h,
+        shares: BigInt(/^\d+$/.test(units[k] ?? "") ? units[k]! : "0"),
+        amountCents: parseDollarsToCents((amounts[k] ?? "").trim() || "0"),
+      }));
+    } catch {
+      return { values: parsed.values, error: "Every amount must be in dollars, like 1,234.56 (or 0 to leave someone out)." };
+    }
+    const paidOn = form.get("alreadyPaid") === "on" ? String(form.get("paidOn") ?? "") : null;
+    if (paidOn !== null && !isValidDate(paidOn)) return { values: parsed.values, error: "Enter the date it was paid out." };
+
     let id: string;
     try {
-      id = await declareDividend(ctx, parsed.input);
+      // Unchanged from the calculation → recorded as calculated; otherwise as entered per person.
+      const computed = await previewDividend(ctx, parsed.input);
+      const same =
+        lines.length === computed.lines.length &&
+        computed.lines.every((c, k) => lines[k]?.holderId === c.holderId && lines[k]?.amountCents === c.amountCents);
+      id = await declareDividend(ctx, { ...parsed.input, lines: same ? undefined : lines, paidOn });
     } catch (e) {
       return { values: parsed.values, error: e instanceof Error ? e.message : String(e) };
     }
@@ -70,7 +105,14 @@ export async function declareAction(_prev: DeclareState, form: FormData): Promis
     return {
       values: parsed.values,
       preview: {
-        lines: p.lines.map((l) => ({ name: l.name, isVrh: l.isVrh, shares: formatShares(l.shares), amount: formatCents(l.amountCents) })),
+        lines: p.lines.map((l) => ({
+          holderId: l.holderId,
+          name: l.name,
+          isVrh: l.isVrh,
+          sharesUnits: l.shares.toString(),
+          shares: formatShares(l.shares),
+          amount: plainDollars(l.amountCents),
+        })),
         totalShares: formatShares(p.totalShares),
         total: formatCents(p.totalCents),
         rate: formatPerShareRate(p.rate),
@@ -102,4 +144,20 @@ export async function markPaidAction(_prev: PayState, form: FormData): Promise<P
   } catch (e) {
     return { error: e instanceof Error ? e.message : String(e) };
   }
+}
+
+export async function voidDividendAction(_prev: PayState, form: FormData): Promise<PayState> {
+  const viewer = await requireAdmin();
+  const id = String(form.get("dividendId") ?? "");
+  const reason = String(form.get("reason") ?? "").trim();
+  if (String(form.get("confirm") ?? "").trim() !== "VOID") return { error: "Type VOID to confirm." };
+  if (!reason) return { error: "Say why it's being voided (e.g. “entered the wrong amounts”)." };
+  try {
+    await voidDividend(adminContext(viewer), id, reason);
+  } catch (e) {
+    return { error: e instanceof Error ? e.message : String(e) };
+  }
+  revalidatePath(`/admin/dividends/${id}`);
+  revalidatePath("/admin/dividends");
+  return { ok: "Voided. Every amount it added to cash balances (and any payouts) has been reversed." };
 }
