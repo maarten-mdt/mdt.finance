@@ -2,14 +2,18 @@ import { costBasisCents, holdingsFromLedger, withoutReversed, type LedgerEntry }
 import { floorDiv, type Cents, type Shares } from "./money";
 import { valueCents } from "./price";
 
-/** Shares a holder had at the end of `date` (YYYY-MM-DD). */
+/**
+ * Shares a holder had at the end of `date` (YYYY-MM-DD).
+ * A reversed entry and its correction are removed first, whatever the correction's date: a
+ * reversal means the entry never happened, so it mustn't count for past dates either.
+ */
 export function balanceAt(entries: readonly LedgerEntry[], holderId: string, date: string): Shares {
-  return holdingsFromLedger(entries.filter((e) => e.date <= date)).get(holderId) ?? 0n;
+  return holdingsFromLedger(withoutReversed(entries).filter((e) => e.date <= date)).get(holderId) ?? 0n;
 }
 
-/** Average-cost basis at the end of `date`. */
+/** Average-cost basis at the end of `date` (reversed entries removed first, as above). */
 export function costBasisAt(entries: readonly LedgerEntry[], holderId: string, date: string): Cents {
-  return costBasisCents(entries.filter((e) => e.date <= date), holderId);
+  return costBasisCents(withoutReversed(entries).filter((e) => e.date <= date), holderId);
 }
 
 export interface PricePoint {
