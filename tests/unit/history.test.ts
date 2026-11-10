@@ -110,3 +110,23 @@ describe("ratioBps / formatBps", () => {
     expect(formatBps(0n)).toBe("0.00%");
   });
 });
+
+describe("reversals dated later cancel the original for past dates too", () => {
+  // Bought 176 in 2024; "Start over" reversed it in Nov 2026; re-entered with the original date.
+  const restarted: LedgerEntry[] = [
+    e({ id: "1", date: "2024-10-01", from: "VRH", to: "D", shares: 176n, priceCents: 56_900n }),
+    e({ id: "2", date: "2026-11-10", from: "D", to: "VRH", shares: 176n, priceCents: 56_900n, reversesId: "1" }),
+    e({ id: "3", date: "2024-10-01", from: "VRH", to: "D", shares: 176n, priceCents: 56_900n }),
+  ];
+
+  it("balanceAt and costBasisAt count the holding once, at every date", () => {
+    expect(balanceAt(restarted, "D", "2025-07-01")).toBe(17_600n);
+    expect(costBasisAt(restarted, "D", "2025-07-01")).toBe(10_014_400n);
+    expect(balanceAt(restarted, "D", "2026-12-31")).toBe(17_600n);
+  });
+
+  it("valueHistory isn't doubled", () => {
+    const h = valueHistory(restarted, "D", [{ date: "2025-07-01", priceCents: 121_890n }]);
+    expect(h[0]).toMatchObject({ shares: 17_600n, costBasisCents: 10_014_400n });
+  });
+});
