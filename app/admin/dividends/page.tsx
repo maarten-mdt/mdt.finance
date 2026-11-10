@@ -3,12 +3,14 @@ import { Card } from "@/components/ui";
 import { formatCents } from "@/lib/calc";
 import { adminContext, requireAdmin } from "@/lib/auth/guards";
 import { listDividends } from "@/lib/data/dividends";
+import { listPeople } from "@/lib/data/admin";
 import { todayInVancouver } from "@/lib/data/holder";
 import { DeclareForm } from "./declare-form";
 
 export default async function DividendsPage({ searchParams }: { searchParams: Promise<{ year?: string }> }) {
   const viewer = await requireAdmin();
-  const dividends = await listDividends(adminContext(viewer));
+  const [dividends, people] = await Promise.all([listDividends(adminContext(viewer)), listPeople(adminContext(viewer))]);
+  const holders = people.filter((p) => p.system_key !== "opening_balance").map((p) => ({ id: p.id, name: p.name }));
   const today = todayInVancouver();
   const { year } = await searchParams;
   // From the valuations page: default the dates to the end of that year (never in the future).
@@ -26,7 +28,7 @@ export default async function DividendsPage({ searchParams }: { searchParams: Pr
 
       <Card className="space-y-3">
         <h2 className="font-semibold">Declare a dividend</h2>
-        <DeclareForm today={defaultDate} />
+        <DeclareForm today={defaultDate} holders={holders} />
       </Card>
 
       <Card flush>
@@ -39,7 +41,10 @@ export default async function DividendsPage({ searchParams }: { searchParams: Pr
               <li key={d.id}>
                 <Link href={`/admin/dividends/${d.id}`} className="flex flex-wrap items-center justify-between gap-2 px-4 py-3 hover:bg-paper sm:px-5">
                   <div>
-                    <div className="font-medium tabular-nums">{formatCents(BigInt(d.total_cents))}</div>
+                    <div className={`font-medium tabular-nums ${d.voided_at ? "text-muted line-through" : ""}`}>
+                      {formatCents(BigInt(d.total_cents))}
+                      {d.voided_at && <span className="ml-2 text-xs font-normal no-underline">Voided</span>}
+                    </div>
                     <div className="text-xs text-muted">
                       Declared {d.declaration_date} · record date {d.record_date} · {d.holders} shareholders
                       {d.memo ? ` · ${d.memo}` : ""}

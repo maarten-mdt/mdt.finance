@@ -45,16 +45,41 @@ export function previewDividend(ctx: DbContext, input: DividendInput): Promise<D
   return withContext(ctx, (tx) => compute(tx, input));
 }
 
+export interface ManualLine {
+  holderId: string;
+  /** Hundredths of a share held on the record date (0 if not on the ledger then). */
+  shares: bigint;
+  amountCents: bigint;
+}
+
 /**
- * Declare a dividend: recompute the allocation in the same transaction, then record the
- * dividend, one allocation per holder, and a dividend credit on each holder's cash balance.
+ * Declare a dividend and add each holder's amount to their cash balance.
+ * Without `lines`, amounts are recalculated here from holdings on the record date.
+ * With `lines` (amounts edited per person, e.g. to match a past dividend exactly), those are
+ * used as given. With `paidOn`, every amount is also recorded as paid out on that date.
  */
 export async function declareDividend(
   ctx: DbContext,
-  input: DividendInput & { declarationDate: string; memo: string | null },
+  input: DividendInput & { declarationDate: string; memo: string | null; lines?: ManualLine[]; paidOn?: string | null },
 ): Promise<string> {
   return withContext(ctx, async (tx) => {
-    const p = await compute(tx, input);
+    let p: { lines: { holderId: string; shares: bigint; amountCents: bigint }[]; totalCents: bigint };
+    if (input.lines) {
+      const ids = input.lines.map((l) => l.holderId);
+      const ok = (
+        await tx.query<{ id: string }>(
+          "SELECT id FROM people WHERE id = ANY($1::uuid[]) AND merged_into IS NULL AND system_key IS DISTINCT FROM 'opening_balance'",
+          [ids],
+        )
+      ).rows.length;
+      if (ok !== new Set(ids).size || ids.length !== new Set(ids).size) throw new Error("Every line must be a different, current shareholder.");
+      if (input.lines.some((l) => l.amountCents < 0n)) throw new Error("Amounts can't be negative.");
+      const lines = input.lines.filter((l) => l.amountCents > 0n);
+      if (!lines.length) throw new Error("Enter at least one amount.");
+      p = { lines, totalCents: lines.reduce((a, l) => a + l.amountCents, 0n) };
+    } else {
+      p = await compute(tx, input);
+    }
     const id = (
       await tx.query<{ id: string }>(
         `INSERT INTO dividends (declaration_date, record_date, amount_per_share_cents, total_cents, input_mode, memo)
@@ -62,9 +87,9 @@ export async function declareDividend(
         [
           input.declarationDate,
           input.recordDate,
-          input.mode === "per_share" ? input.amountCents.toString() : null,
+          input.mode === "per_share" && !input.lines ? input.amountCents.toString() : null,
           p.totalCents.toString(),
-          input.mode,
+          input.lines ? "manual" : input.mode,
           input.memo,
         ],
       )
@@ -72,12 +97,22 @@ export async function declareDividend(
     for (const l of p.lines) {
       if (l.amountCents === 0n) continue;
       await tx.query(
-        `INSERT INTO dividend_allocations (dividend_id, person_id, shares_on_record_date, amount_cents) VALUES ($1, $2, $3, $4)`,
-        [id, l.holderId, l.shares.toString(), l.amountCents.toString()],
-      );
-      await tx.query(
         `INSERT INTO credit_ledger (entry_date, person_id, type, amount_cents, dividend_id) VALUES ($1, $2, 'dividend', $3, $4)`,
         [input.declarationDate, l.holderId, l.amountCents.toString(), id],
+      );
+      const payout = input.paidOn
+        ? (
+            await tx.query<{ id: string }>(
+              `INSERT INTO credit_ledger (entry_date, person_id, type, amount_cents, dividend_id, memo)
+               VALUES ($1, $2, 'payout', $3, $4, 'Dividend paid out') RETURNING id::text`,
+              [input.paidOn, l.holderId, (-l.amountCents).toString(), id],
+            )
+          ).rows[0]!.id
+        : null;
+      await tx.query(
+        `INSERT INTO dividend_allocations (dividend_id, person_id, shares_on_record_date, amount_cents, disposition, paid_on, payout_entry_id)
+         VALUES ($1, $2, $3, $4, $5, $6, $7)`,
+        [id, l.holderId, l.shares.toString(), l.amountCents.toString(), payout ? "paid_out" : "pending", payout ? input.paidOn : null, payout],
       );
     }
     return id;
@@ -88,10 +123,12 @@ export interface DividendSummary {
   id: string;
   declaration_date: string;
   record_date: string;
-  input_mode: "total" | "per_share";
+  input_mode: "total" | "per_share" | "manual";
   amount_per_share_cents: string | null;
   total_cents: string;
   memo: string | null;
+  voided_at: string | null;
+  void_reason: string | null;
   holders: number;
   paid_cents: string;
   held_cents: string;
@@ -101,6 +138,7 @@ export async function listDividends(ctx: DbContext): Promise<DividendSummary[]> 
   const r = await withContext(ctx, (tx) =>
     tx.query<DividendSummary>(
       `SELECT d.id, d.declaration_date, d.record_date, d.input_mode, d.amount_per_share_cents::text, d.total_cents::text, d.memo,
+              d.voided_at::text, d.void_reason,
               count(a.id)::int AS holders,
               coalesce(sum(a.amount_cents) FILTER (WHERE a.disposition = 'paid_out'), 0)::text AS paid_cents,
               coalesce(sum(a.amount_cents) FILTER (WHERE a.disposition <> 'paid_out'), 0)::text AS held_cents
@@ -129,6 +167,7 @@ export async function getDividend(ctx: DbContext, id: string): Promise<{ dividen
     const d = (
       await tx.query<DividendSummary>(
         `SELECT d.id, d.declaration_date, d.record_date, d.input_mode, d.amount_per_share_cents::text, d.total_cents::text, d.memo,
+                d.voided_at::text, d.void_reason,
                 (SELECT count(*)::int FROM dividend_allocations a WHERE a.dividend_id = d.id) AS holders,
                 '0' AS paid_cents, '0' AS held_cents
          FROM dividends d WHERE d.id = $1`,
@@ -181,4 +220,10 @@ export async function markPaid(ctx: DbContext, dividendId: string, allocationIds
     }
     return n;
   });
+}
+
+/** Void a dividend entered wrong: every cash entry it created is reversed. */
+export async function voidDividend(ctx: DbContext, id: string, reason: string): Promise<number> {
+  const r = await withContext(ctx, (tx) => tx.query<{ n: number }>("SELECT app.void_dividend($1, $2) AS n", [id, reason]));
+  return r.rows[0]!.n;
 }
