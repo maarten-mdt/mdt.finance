@@ -66,3 +66,13 @@ describe("reverse all share entries (start over)", () => {
     expect(h.rows[0]!.shares).toBe("7548100");
   });
 });
+
+describe("holdings on past dates after starting over", () => {
+  it("count re-entered history once, even though the reversals are dated today", async () => {
+    // State after the tests above: everything reversed today, then VRH's 75,481 re-entered with its 2022 date.
+    const r = await db.as({ personId: admin, isAdmin: true }, (c) =>
+      c.query<{ holder_id: string; shares: string }>("SELECT holder_id, shares::text FROM app.holdings_at('2025-06-30')"),
+    );
+    expect(r.rows).toEqual([{ holder_id: vrh, shares: "7548100" }]);
+  });
+});

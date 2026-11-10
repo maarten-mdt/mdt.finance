@@ -58,6 +58,28 @@ export default async function DividendPage({ params }: { params: Promise<{ id: s
         </Card>
       )}
 
+      {(() => {
+        // Calculated dividends should match the ledger on the record date. A mismatch means the
+        // history was corrected after it was declared (e.g. "Start over" and re-entry).
+        const off = d.input_mode === "manual" || d.voided_at ? [] : allocations.filter((a) => a.shares_on_record_date !== a.ledger_shares);
+        return off.length > 0 ? (
+          <Card className="space-y-2 border-accent/50 bg-accent/5 text-sm" >
+            <p data-testid="dividend-mismatch">
+              <strong>Check this dividend.</strong> For {off.length} shareholder{off.length === 1 ? "" : "s"}, the shares it was calculated on
+              differ from what the ledger now shows for {d.record_date}, probably because the history was corrected after it was declared.
+              If the amounts are wrong, void it below and declare it again.
+            </p>
+            <ul className="text-xs text-muted">
+              {off.slice(0, 12).map((a) => (
+                <li key={a.id}>
+                  {a.name}: calculated on {formatShares(BigInt(a.shares_on_record_date))}, ledger now {formatShares(BigInt(a.ledger_shares))}
+                </li>
+              ))}
+            </ul>
+          </Card>
+        ) : null;
+      })()}
+
       {d.input_mode === "manual" && !d.voided_at && (
         <p className="text-xs text-muted">Amounts were entered per person (not calculated from the record date).</p>
       )}

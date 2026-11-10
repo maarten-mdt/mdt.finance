@@ -157,6 +157,8 @@ export interface AllocationRow {
   system_key: string | null;
   bank_last4: string | null;
   shares_on_record_date: string;
+  /** What the ledger says they held on the record date now (corrections included). */
+  ledger_shares: string;
   amount_cents: string;
   disposition: "pending" | "paid_out" | "applied_to_purchase";
   paid_on: string | null;
@@ -178,8 +180,10 @@ export async function getDividend(ctx: DbContext, id: string): Promise<{ dividen
     const allocations = (
       await tx.query<AllocationRow>(
         `SELECT a.id, a.person_id, p.name, p.email, p.system_key, p.bank_last4, a.shares_on_record_date::text,
-                a.amount_cents::text, a.disposition, a.paid_on
+                a.amount_cents::text, a.disposition, a.paid_on, coalesce(h.shares, 0)::text AS ledger_shares
          FROM dividend_allocations a JOIN people p ON p.id = a.person_id
+         JOIN dividends d ON d.id = a.dividend_id
+         LEFT JOIN LATERAL (SELECT x.shares FROM app.holdings_at(d.record_date) x WHERE x.holder_id = a.person_id) h ON true
          WHERE a.dividend_id = $1
          ORDER BY p.system_key IS NULL, p.name`,
         [id],
