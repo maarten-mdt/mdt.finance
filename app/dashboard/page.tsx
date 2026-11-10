@@ -132,9 +132,14 @@ export default async function DashboardPage() {
             <Stat label="Invested" value={<span data-testid="cost-basis">{formatCents(d.costBasisCents)}</span>} sub="What you paid (cost basis)" />
           </div>
           {holdsAnything && gain !== null && (
-            <div className="mt-6 grid grid-cols-2 gap-x-4 gap-y-6 border-t border-line pt-5 sm:grid-cols-4">
+            <div className="mt-6 grid grid-cols-2 gap-x-4 gap-y-6 border-t border-line pt-5 sm:grid-cols-3 lg:grid-cols-5">
               <Stat label="Value gain" value={signedCents(gain)} sub={gainPct === null ? undefined : formatBps(gainPct)} />
-              <Stat label="Dividends earned" value={formatCents(d.credit.dividendsCents)} sub="All time" />
+              <Stat label="Dividends earned" value={formatCents(d.credit.dividendsCents)} sub="All time, paid or kept" />
+              <Stat
+                label="Cash balance"
+                value={<span data-testid="cash-balance-top">{formatCents(d.credit.balanceCents)}</span>}
+                sub="Held for you, e.g. dividends kept"
+              />
               <Stat
                 label="Annualized return"
                 value={<span data-testid="annualized">{d.annualizedBps === null ? "—" : `${formatBps(d.annualizedBps)}`}</span>}
@@ -179,6 +184,26 @@ export default async function DashboardPage() {
             {d.credit.balanceCents === 0n && d.credit.dividendsCents === 0n && <p className="py-1 text-muted">Nothing held for you right now.</p>}
           </dl>
         </Card>
+
+        {d.dividends.length > 0 && (
+          <Card flush>
+            <h2 className="px-4 pt-4 font-semibold sm:px-5">Dividends</h2>
+            <ul className="mt-2 divide-y divide-line" data-testid="dividend-history">
+              {d.dividends.map((v, i) => (
+                <li key={i} className="flex items-start justify-between gap-3 px-4 py-3 text-sm sm:px-5">
+                  <div>
+                    <div className="font-medium">{shortDate(v.declared)}</div>
+                    <div className="text-xs text-muted">
+                      {v.shares > 0n ? `${formatShares(v.shares)} shares on the record date · ` : ""}
+                      {v.paidOn ? `Paid out ${shortDate(v.paidOn)}` : "Kept as cash"}
+                    </div>
+                  </div>
+                  <div className="tabular-nums">{formatCents(v.amountCents)}</div>
+                </li>
+              ))}
+            </ul>
+          </Card>
+        )}
 
         {/* Charts */}
         {d.history.length === 1 && (

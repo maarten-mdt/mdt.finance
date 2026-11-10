@@ -55,6 +55,8 @@ export interface Dashboard {
   prices: (PricePoint & { year: number; locked: boolean })[];
   /** The holder's position at each valuation date. */
   history: ValuePoint[];
+  /** Every dividend this holder received (voided ones excluded), newest first. */
+  dividends: { declared: string; shares: Shares; amountCents: Cents; paidOn: string | null }[];
   /** Annualized return (XIRR) in basis points, once they've held shares for a year. */
   annualizedBps: bigint | null;
   /** Date of their first purchase. */
@@ -143,7 +145,23 @@ export async function getDashboard(ctx: DbContext, today: string): Promise<Dashb
       if (!eligible) eligibleOn = eligibilityDate(person.hire_date, eligibilityYears);
     }
 
-    // Annualized return: purchases out, sales and dividends in, today's value as the final inflow.
+    const dividends = (
+      await tx.query<{ declaration_date: string; shares_on_record_date: string; amount_cents: string; paid_on: string | null }>(
+        `SELECT d.declaration_date, a.shares_on_record_date::text, a.amount_cents::text, a.paid_on
+         FROM dividend_allocations a JOIN dividends d ON d.id = a.dividend_id
+         WHERE a.person_id = app.current_person_id() AND d.voided_at IS NULL
+         ORDER BY d.declaration_date DESC`,
+      )
+    ).rows.map((r) => ({
+      declared: r.declaration_date,
+      shares: BigInt(r.shares_on_record_date),
+      amountCents: BigInt(r.amount_cents),
+      paidOn: r.paid_on,
+    }));
+
+    // Annualized return: purchases out, sales and dividends in (whether paid out or kept as cash,
+    // on the date declared; voided dividends are reversed and drop out), today's value as the
+    // final inflow.
     const live = withoutReversed(ledger);
     const firstPurchase = live.filter((l) => l.to === SELF).map((l) => l.date).sort()[0] ?? null;
     const flows: CashFlow[] = [
@@ -175,6 +193,7 @@ export async function getDashboard(ctx: DbContext, today: string): Promise<Dashb
       history: valueHistory(ledger, SELF, prices),
       annualizedBps,
       firstPurchase,
+      dividends,
     };
   });
 }

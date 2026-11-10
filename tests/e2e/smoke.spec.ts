@@ -247,6 +247,32 @@ test("admin: passkey, import, opening balance, admin role, agreements, dividends
   await expect(page.getByRole("button", { name: "Mark 0 as paid" })).toBeDisabled();
   if (process.env.SCREENSHOT_DIR) await page.screenshot({ path: `${process.env.SCREENSHOT_DIR}/dividend.png`, fullPage: true });
 
+  // ---- A past dividend entered per person, already paid, then voided ----
+  await page.goto("/admin/dividends?year=2025"); // the test holder has held shares since mid-2025
+  await page.getByLabel("Total dividend ($)").fill("1,000.00");
+  await page.getByRole("button", { name: "Calculate" }).click();
+  await page.getByLabel(`Amount for ${holderName}`).fill("123.45");
+  await expect(page.getByText("edited (was")).toBeVisible();
+  // Add someone the ledger doesn't show as a holder on the record date.
+  const extra = (await page.getByLabel("Add a shareholder").locator("option").nth(1).textContent())!.trim();
+  await page.getByLabel("Add a shareholder").selectOption({ label: extra });
+  await page.getByRole("button", { name: "Add", exact: true }).click();
+  await page.getByLabel(`Amount for ${extra}`).fill("50.00");
+  const total = (await page.getByTestId("dividend-total").textContent())!;
+  expect(total).not.toBe("$1,000.00");
+  await page.getByLabel("Already paid out on").check();
+  await page.getByLabel("Date paid out").fill("2026-01-05");
+  await page.getByRole("button", { name: `Declare ${total} dividend` }).click();
+  await expect(page).toHaveURL(/\/admin\/dividends\/[0-9a-f-]{36}$/);
+  await expect(page.getByText("Amounts were entered per person")).toBeVisible();
+  await expect(page.getByTestId("paid-total")).toHaveText(total);
+  await expect(page.getByTestId("allocations")).toContainText(extra);
+  await page.getByText("Entered this wrong? Void the dividend").click();
+  await page.getByLabel("Reason").fill("Test of voiding");
+  await page.getByLabel("Type VOID to confirm").fill("VOID");
+  await page.getByRole("button", { name: "Void dividend" }).click();
+  await expect(page.getByText(/^Voided on/)).toBeVisible();
+
   // ---- Sale between shareholders ----
   await page.goto("/admin/transfers");
   await page.getByLabel("Seller").selectOption(holderId);
@@ -297,6 +323,10 @@ test("admin: passkey, import, opening balance, admin role, agreements, dividends
   await hp.getByRole("button", { name: "Sign in", exact: true }).click();
   await expect(hp.getByText("Action needed: sign your shareholder agreement")).toBeVisible();
   await expect(hp.getByText("2027 estimate, not yet audited")).toBeVisible();
+  // The $10,000 dividend this holder was left unpaid on shows as kept cash; the voided one doesn't appear.
+  await expect(hp.getByTestId("cash-balance-top")).toBeVisible();
+  await expect(hp.getByTestId("dividend-history")).toContainText("Kept as cash");
+  await expect(hp.getByTestId("dividend-history")).not.toContainText("$123.45");
   const download = await hp.request.get(await hp.getByRole("link", { name: "Download the agreement" }).getAttribute("href").then((h) => h!));
   expect(download.headers()["content-type"]).toBe("application/pdf");
   await hp.locator('input[name="file"]').setInputFiles({ name: "signed.pdf", mimeType: "application/pdf", buffer: PDF });
