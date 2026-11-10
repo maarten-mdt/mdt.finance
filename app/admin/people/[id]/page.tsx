@@ -23,12 +23,19 @@ const typeLabel: Record<string, string> = {
 const holderLabel = (name: string, key: string | null) =>
   key === "opening_balance" ? "Issued by MDT / pre-portal" : key === "vrh" ? `${name} (VRH)` : name;
 
-export default async function PersonPage({ params }: { params: Promise<{ id: string }> }) {
+export default async function PersonPage({
+  params,
+  searchParams,
+}: {
+  params: Promise<{ id: string }>;
+  searchParams: Promise<{ all?: string }>;
+}) {
   const { id } = await params;
+  const showAll = (await searchParams).all === "1";
   if (!/^[0-9a-f-]{36}$/.test(id)) notFound();
   const viewer = await requireAdmin();
   const ctx = adminContext(viewer);
-  const [p, eligibilityYears, docs, movements, people, price] = await Promise.all([
+  const [p, eligibilityYears, docs, allMovements, people, price] = await Promise.all([
     getPerson(ctx, id),
     getIntSetting(ctx, "eligibility_years"),
     listDocumentsFor(ctx, id),
@@ -37,6 +44,9 @@ export default async function PersonPage({ params }: { params: Promise<{ id: str
     latestPriceCents(ctx),
   ]);
   if (!p) notFound();
+  // Reversed entries and their corrections cancel out; hide them unless asked.
+  const movements = showAll ? allMovements : allMovements.filter((m) => !m.reversed_by && !m.reverses_entry_id);
+  const hiddenCount = allMovements.length - movements.length;
   if (p.merged_into) {
     return (
       <div className="space-y-4">
@@ -117,7 +127,19 @@ export default async function PersonPage({ params }: { params: Promise<{ id: str
       <Card flush>
         <div className="flex flex-wrap items-baseline justify-between gap-2 px-4 pt-4 sm:px-5">
           <h2 className="font-semibold">Shares</h2>
-          <span className="text-sm text-muted">Every change is a ledger entry; mistakes are reversed, never edited.</span>
+          <span className="text-sm text-muted">
+            Every change is a ledger entry; mistakes are reversed, never edited.{" "}
+            {hiddenCount > 0 && !showAll && (
+              <Link href={`/admin/people/${p.id}?all=1`} className="underline-offset-4 hover:underline">
+                Show {hiddenCount} reversed
+              </Link>
+            )}
+            {showAll && (
+              <Link href={`/admin/people/${p.id}`} className="underline-offset-4 hover:underline">
+                Hide reversed
+              </Link>
+            )}
+          </span>
         </div>
         {movements.length === 0 ? (
           <p className="px-4 pb-4 pt-2 text-sm text-muted sm:px-5">No share history yet.</p>

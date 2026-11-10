@@ -304,4 +304,19 @@ test("admin: passkey, import, opening balance, admin role, agreements, dividends
   await hp.reload();
   await expect(hp.getByTestId("agreement-signed")).toContainText("Signed on 2026-11-09");
   await holderCtx.close();
+
+  // ---- Start over: reverse every share movement (needs the typed confirmation) ----
+  await page.goto("/admin/holders");
+  await page.getByLabel("Type REVERSE ALL to confirm").fill("reverse");
+  await page.getByRole("button", { name: "Reverse all share movements" }).click();
+  await expect(page.getByText("Type REVERSE ALL to confirm.")).toBeVisible();
+  await page.getByLabel("Type REVERSE ALL to confirm").fill("REVERSE ALL");
+  await page.getByRole("button", { name: "Reverse all share movements" }).click();
+  await expect(page.getByText(/Reversed \d+ share movements\. Every holder is back to zero\./)).toBeVisible();
+  await page.reload();
+  await expect(page.getByTestId("vrh-shares")).toHaveText("0");
+  await page.goto(`/admin/people/${holderId}`);
+  await expect(page.getByTestId("person-shares")).toHaveText("0");
+  await expect(page.getByText("No share history yet.")).toBeVisible(); // reversed pairs hidden by default
+  await expect(page.getByRole("link", { name: /Show \d+ reversed/ })).toBeVisible();
 });

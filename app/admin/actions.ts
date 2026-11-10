@@ -7,6 +7,7 @@ import {
   getSystemHolderIds,
   importPeople,
   logReveal,
+  reverseAllShareEntries,
   reverseShareEntry,
   setAdminRole,
   type ImportResult,
@@ -144,4 +145,18 @@ export async function adminRoleAction(_prev: FormState, form: FormData): Promise
   revalidatePath(`/admin/people/${personId}`);
   revalidatePath("/admin");
   return { ok: makeAdmin ? "Admin role granted. They'll be asked to add a passkey before the admin console opens." : "Admin role removed." };
+}
+
+// ---- Start over: reverse every share movement ----------------------------------------------------
+
+export async function reverseAllAction(_prev: FormState, form: FormData): Promise<FormState> {
+  const viewer = await requireAdmin();
+  if (String(form.get("confirm") ?? "").trim() !== "REVERSE ALL") return { error: "Type REVERSE ALL to confirm." };
+  try {
+    const n = await reverseAllShareEntries(adminContext(viewer));
+    revalidatePath("/admin", "layout");
+    return { ok: n === 0 ? "There was nothing to reverse." : `Reversed ${n} share movement${n === 1 ? "" : "s"}. Every holder is back to zero.` };
+  } catch (e) {
+    return { error: friendly(e) };
+  }
 }

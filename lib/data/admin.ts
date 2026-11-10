@@ -212,6 +212,14 @@ export async function recordOpeningBalance(
   });
 }
 
+/** Start over: reverse every live share movement, newest first. Returns how many were reversed. */
+export async function reverseAllShareEntries(ctx: DbContext): Promise<number> {
+  const r = await withContext(ctx, (tx) =>
+    tx.query<{ n: number }>("SELECT app.reverse_all_share_entries('Start over: all share movements reversed by admin') AS n"),
+  );
+  return r.rows[0]!.n;
+}
+
 /** Reverse a ledger entry with an exactly mirrored correction entry. */
 export async function reverseShareEntry(ctx: DbContext, entryId: string, memo: string): Promise<void> {
   await withContext(ctx, (tx) =>
