@@ -40,6 +40,8 @@ export interface Dashboard {
   shares: Shares;
   priceCents: Cents | null;
   priceYear: number | null;
+  /** The latest price isn't locked yet (unaudited estimate). */
+  priceIsEstimate: boolean;
   valueCents: Cents | null;
   costBasisCents: Cents;
   /** Set for employees who are not eligible yet. */
@@ -50,7 +52,7 @@ export interface Dashboard {
   /** Share movements, oldest first, without reversed entries or their corrections. */
   movements: Movement[];
   /** Every board-approved price, oldest first. */
-  prices: (PricePoint & { year: number })[];
+  prices: (PricePoint & { year: number; locked: boolean })[];
   /** The holder's position at each valuation date. */
   history: ValuePoint[];
   /** Annualized return (XIRR) in basis points, once they've held shares for a year. */
@@ -111,10 +113,11 @@ export async function getDashboard(ctx: DbContext, today: string): Promise<Dashb
     const shares = BigInt((await tx.query<{ b: string }>("SELECT app.my_share_balance()::text AS b")).rows[0]!.b);
 
     const prices = (
-      await tx.query<{ year: number; settlement_date: string; price_per_share_cents: string }>(
-        "SELECT year, settlement_date, price_per_share_cents::text FROM cycles WHERE locked_at IS NOT NULL ORDER BY year",
+      // RLS returns locked prices plus the latest year's draft (shown as an estimate).
+      await tx.query<{ year: number; settlement_date: string; price_per_share_cents: string; locked: boolean }>(
+        "SELECT year, settlement_date, price_per_share_cents::text, locked_at IS NOT NULL AS locked FROM cycles ORDER BY year",
       )
-    ).rows.map((c) => ({ year: c.year, date: c.settlement_date, priceCents: BigInt(c.price_per_share_cents) }));
+    ).rows.map((c) => ({ year: c.year, date: c.settlement_date, priceCents: BigInt(c.price_per_share_cents), locked: c.locked }));
     const latest = prices.at(-1) ?? null;
 
     const creditRows = (
@@ -160,6 +163,7 @@ export async function getDashboard(ctx: DbContext, today: string): Promise<Dashb
       shares,
       priceCents: latest?.priceCents ?? null,
       priceYear: latest?.year ?? null,
+      priceIsEstimate: latest ? !latest.locked : false,
       valueCents: latest ? valueCents(shares, latest.priceCents) : null,
       costBasisCents: costBasisCents(ledger, SELF),
       eligibleOn,

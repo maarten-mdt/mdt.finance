@@ -206,6 +206,15 @@ test("admin: passkey, import, opening balance, admin role, agreements, dividends
   await expect(y2020.getByText("2020 locked.")).toBeVisible();
   await expect(y2020.getByLabel("Audited EBITDA")).toBeDisabled();
   await expect(page.getByTestId("valuation-2026")).toContainText("Locked");
+
+  // An unlocked latest year shows to shareholders as an estimate.
+  const y2027 = page.getByTestId("valuation-2027");
+  await y2027.getByLabel("Audited EBITDA").fill("5,000,000");
+  await y2027.getByLabel("Debt").fill("3,500,000");
+  await y2027.getByLabel("Total shares (all classes)").fill("1,000,000");
+  await y2027.getByRole("button", { name: "Save draft" }).click();
+  await expect(y2027.getByText("2027 saved as a draft: $31.50")).toBeVisible();
+  await expect(y2027).toContainText("Draft: shareholders see this as an estimate");
   if (process.env.SCREENSHOT_DIR) await page.screenshot({ path: `${process.env.SCREENSHOT_DIR}/valuations.png`, fullPage: true });
 
   // ---- Shareholder agreement: upload, send to the holder ----
@@ -287,6 +296,7 @@ test("admin: passkey, import, opening balance, admin role, agreements, dividends
   await hp.getByLabel("Authenticator code").fill(await freshCode(holder.secret, holder.lastCode));
   await hp.getByRole("button", { name: "Sign in", exact: true }).click();
   await expect(hp.getByText("Action needed: sign your shareholder agreement")).toBeVisible();
+  await expect(hp.getByText("2027 estimate, not yet audited")).toBeVisible();
   const download = await hp.request.get(await hp.getByRole("link", { name: "Download the agreement" }).getAttribute("href").then((h) => h!));
   expect(download.headers()["content-type"]).toBe("application/pdf");
   await hp.locator('input[name="file"]').setInputFiles({ name: "signed.pdf", mimeType: "application/pdf", buffer: PDF });

@@ -113,3 +113,26 @@ describe("row-level security: holder A cannot read holder B", () => {
     expect(ledger.rows[0]!.n).toBe(3);
   });
 });
+
+describe("valuations visible to holders", () => {
+  it("shows locked prices and the latest year's draft (as an estimate), but not older drafts", async () => {
+    const add = (year: number, locked: boolean) =>
+      db.owner.query(
+        `INSERT INTO cycles (year, ebitda_cents, debt_cents, multiple_x100, shares_outstanding, price_per_share_cents, settlement_date, status, locked_at, locked_by)
+         VALUES ($1, 100, 0, 700, 1, 7, make_date($1, 7, 1), $2, $3, $4)`,
+        [year, locked ? "locked" : "draft", locked ? new Date() : null, locked ? "test" : null],
+      );
+    await add(2023, false); // an old draft nobody locked
+    await add(2024, true);
+    await add(2025, true);
+    await add(2026, false); // this year's estimate
+    const r = await db.as({ personId: alice }, (c) => c.query("SELECT year, locked_at IS NOT NULL AS locked FROM cycles ORDER BY year"));
+    expect(r.rows).toEqual([
+      { year: 2024, locked: true },
+      { year: 2025, locked: true },
+      { year: 2026, locked: false },
+    ]);
+    const anon = await db.as({ personId: null }, (c) => c.query("SELECT year FROM cycles"));
+    expect(anon.rowCount).toBe(0);
+  });
+});

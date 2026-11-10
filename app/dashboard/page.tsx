@@ -42,6 +42,8 @@ export default async function DashboardPage() {
   const totalPct = totalReturn === null ? null : ratioBps(totalReturn, d.costBasisCents);
   const holdsAnything = d.movements.length > 0;
 
+  const estimateDates = new Set(d.prices.filter((p) => !p.locked).map((p) => p.date));
+
   // Chart 1: value vs. amount invested at each valuation.
   const historyDates = d.history.map((h) => shortDate(h.date));
   const valueSeries: ChartSeries[] = [
@@ -54,7 +56,7 @@ export default async function DashboardPage() {
         x: i,
         y: Number(h.valueCents),
         label: formatCents(h.valueCents),
-        note: `${formatShares(h.shares)} shares × ${formatCents(h.priceCents)}`,
+        note: `${formatShares(h.shares)} shares × ${formatCents(h.priceCents)}${estimateDates.has(h.date) ? " (estimate)" : ""}`,
       })),
     },
     {
@@ -76,7 +78,12 @@ export default async function DashboardPage() {
       name: "Price per share",
       color: BLUE,
       kind: "line",
-      points: d.prices.map((p) => ({ x: yearIndex.get(p.year)!, y: Number(p.priceCents), label: formatCents(p.priceCents) })),
+      points: d.prices.map((p) => ({
+        x: yearIndex.get(p.year)!,
+        y: Number(p.priceCents),
+        label: formatCents(p.priceCents),
+        note: p.locked ? undefined : "Estimate, not yet audited",
+      })),
     },
     {
       key: "buys",
@@ -119,7 +126,7 @@ export default async function DashboardPage() {
             <Stat
               label="Price per share"
               value={d.priceCents === null ? "Not set yet" : formatCents(d.priceCents)}
-              sub={d.priceYear ? `${d.priceYear} valuation` : "Set after the annual valuation"}
+              sub={d.priceYear ? (d.priceIsEstimate ? `${d.priceYear} estimate, not yet audited` : `${d.priceYear} valuation`) : "Set after the annual valuation"}
             />
             <Stat label="Current value" value={<span data-testid="value">{d.valueCents === null ? "—" : formatCents(d.valueCents)}</span>} />
             <Stat label="Invested" value={<span data-testid="cost-basis">{formatCents(d.costBasisCents)}</span>} sub="What you paid (cost basis)" />
@@ -216,7 +223,7 @@ export default async function DashboardPage() {
               series={buys.length ? priceSeries : priceSeries.slice(0, 1)}
               table={{
                 headers: ["Year", "Price per share"],
-                rows: d.prices.map((p) => [String(p.year), formatCents(p.priceCents)]),
+                rows: d.prices.map((p) => [String(p.year), `${formatCents(p.priceCents)}${p.locked ? "" : " (estimate)"}`]),
               }}
             />
           </Card>

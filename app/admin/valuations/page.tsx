@@ -11,6 +11,8 @@ export default async function ValuationsPage() {
   const viewer = await requireAdmin();
   const thisYear = Number(todayInVancouver().slice(0, 4));
   const { rows, defaults } = await listValuations(adminContext(viewer), thisYear);
+  // The latest saved year is shown to shareholders even before it's locked, as an estimate.
+  const latestSaved = rows.find((r) => r.priceCents !== null)?.year ?? null;
 
   return (
     <div className="space-y-4">
@@ -18,8 +20,8 @@ export default async function ValuationsPage() {
         <h1 className="text-xl font-bold tracking-tight">Valuations</h1>
         <p className="text-sm text-muted">
           Price per share for each year = (multiple × audited EBITDA − debt) ÷ total shares outstanding. Enter a year&apos;s numbers and
-          save it as a draft; lock it once the board approves. Locked prices are what shareholders see, are used for their returns,
-          and can&apos;t be changed.
+          save it. The latest year shows to shareholders as an estimate (marked &ldquo;not yet audited&rdquo;) until you lock it once the
+          audit is done and the board approves. Locked prices can&apos;t be changed; older unlocked years stay hidden.
         </p>
       </div>
       <div className="space-y-3" data-testid="valuations">
@@ -27,6 +29,7 @@ export default async function ValuationsPage() {
           <ValuationRowForm
             key={r.year}
             year={r.year}
+            isLatest={r.year === latestSaved}
             locked={r.locked}
             lockedNote={r.locked ? `Locked ${r.lockedAt?.slice(0, 10)}${r.lockedBy ? ` by ${r.lockedBy}` : ""}` : null}
             saved={r.priceCents !== null}

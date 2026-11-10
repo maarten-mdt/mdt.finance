@@ -56,7 +56,9 @@ export function ValuationRowForm({
   saved,
   initial,
   dividends,
+  isLatest,
 }: {
+  isLatest: boolean;
   year: number;
   locked: boolean;
   lockedNote: string | null;
@@ -98,7 +100,15 @@ export function ValuationRowForm({
               {price}
             </div>
             <div className="text-xs text-muted">
-              {locked ? lockedNote : saved ? (dirty ? "Unsaved changes" : "Draft, not visible to shareholders") : "Not entered"}
+              {locked
+                ? lockedNote
+                : saved
+                  ? dirty
+                    ? "Unsaved changes"
+                    : isLatest
+                      ? "Draft: shareholders see this as an estimate"
+                      : "Draft, not visible to shareholders"
+                  : "Not entered"}
             </div>
           </div>
         </div>
